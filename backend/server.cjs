@@ -13,6 +13,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// --- 기본 테스트 API ---
+app.get("/api/hello", (req, res) => {
+  res.json({ message: "Hello from backend!" });
+});
+
+// --- 메모리 사용자 저장소 ---
 let users = []; // 서버 메모리 회원 목록
 
 // --- 사업구조 API (GET/POST/PUT/DELETE) ---
@@ -30,7 +36,6 @@ let programStructure = {
   }
 };
 
-// 사업구조 전체 조회
 app.get("/api/program-structure", (req, res) => {
   try {
     res.status(200).json(programStructure);
@@ -39,7 +44,6 @@ app.get("/api/program-structure", (req, res) => {
   }
 });
 
-// 사업구조 전체 저장(덮어쓰기)
 app.post("/api/program-structure", (req, res) => {
   try {
     programStructure = req.body;
@@ -49,7 +53,6 @@ app.post("/api/program-structure", (req, res) => {
   }
 });
 
-// 사업구조 개별 항목 수정
 app.put("/api/program-structure/:key", (req, res) => {
   try {
     const key = req.params.key;
@@ -63,7 +66,6 @@ app.put("/api/program-structure/:key", (req, res) => {
   }
 });
 
-// 사업구조 개별 항목 삭제
 app.delete("/api/program-structure/:key", (req, res) => {
   try {
     const key = req.params.key;
@@ -101,7 +103,6 @@ let performances = [
   }
 ];
 
-// --- 실적 CRUD API ---
 app.get("/api/performances", (req, res) => {
   try {
     res.json(performances);
@@ -149,7 +150,7 @@ app.delete("/api/performances/:id", (req, res) => {
   }
 });
 
-// --- 실적 요약(통계) API (예시) ---
+// --- 실적 요약(통계) API ---
 app.get("/api/performance-summaries", (req, res) => {
   try {
     res.json([
@@ -176,7 +177,7 @@ app.get("/api/performance-summaries", (req, res) => {
   }
 });
 
-// --- 회원가입 API (이름, 이메일, 비밀번호) ---
+// --- 회원가입 API ---
 app.post("/api/signup", (req, res) => {
   try {
     const { name, password, email } = req.body;
@@ -193,7 +194,7 @@ app.post("/api/signup", (req, res) => {
   }
 });
 
-// --- 로그인 API (이메일, 비밀번호) ---
+// --- 로그인 API ---
 app.post("/api/login", (req, res) => {
   try {
     const { email, password } = req.body;
@@ -208,14 +209,23 @@ app.post("/api/login", (req, res) => {
   }
 });
 
-// --- 회원정보 API (Express 임시, Firestore 사용 시 프론트에서 직접 호출 권장) ---
+// --- 회원 목록 API (Firestore 연동 시 프론트 직접 호출 권장) ---
 app.get("/api/members", (req, res) => {
   try {
-    // 임시: users 배열 반환 (실전은 Firestore 연동)
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error", detail: err.message });
   }
+});
+
+// --- 루트 경로 응답 ---
+app.get("/", (req, res) => {
+  res.send("✅ Backend is running. Try accessing /api/hello");
+});
+
+// --- 테스트용 헬로 API ---
+app.get("/api/hello", (req, res) => {
+  res.json({ message: "Hello, API is working!" });
 });
 
 // --- 404 핸들러 ---
@@ -223,6 +233,7 @@ app.use("/api", (req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
+// --- 서버 시작 ---
 app.listen(5184, () => {
-  console.log("API 서버가 5184번 포트에서 실행중!");
+  console.log("✅ API 서버가 5184번 포트에서 실행중!");
 });

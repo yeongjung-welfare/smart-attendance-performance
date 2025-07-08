@@ -1,5 +1,5 @@
 // 📁 backend/routes/programStructure.js
-import express from "express";
+const express = require("express");
 const router = express.Router();
 
 let programStructure = {
@@ -16,22 +16,31 @@ let programStructure = {
   }
 };
 
-router.get("/", (req, res) => res.json(programStructure));
+router.get("/", (req, res) => {
+  res.json(programStructure);
+});
+
 router.post("/", (req, res) => {
   programStructure = req.body;
   res.json(programStructure);
 });
+
 router.put("/:key", (req, res) => {
   const key = req.params.key;
-  if (!programStructure[key]) return res.status(404).json({ error: "해당 키 없음" });
+  if (!programStructure[key]) {
+    return res.status(404).json({ error: "해당 사업구조 키가 없습니다." });
+  }
   programStructure[key] = req.body;
   res.json(programStructure[key]);
 });
+
 router.delete("/:key", (req, res) => {
   const key = req.params.key;
-  if (!programStructure[key]) return res.status(404).json({ error: "해당 키 없음" });
+  if (!programStructure[key]) {
+    return res.status(404).json({ error: "해당 사업구조 키가 없습니다." });
+  }
   delete programStructure[key];
   res.json({ success: true });
 });
 
-export default router;
+module.exports = router;

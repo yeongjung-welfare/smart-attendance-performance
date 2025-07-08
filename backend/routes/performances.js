@@ -1,5 +1,5 @@
 // 📁 backend/routes/performances.js
-import express from "express";
+const express = require("express");
 const router = express.Router();
 
 let performances = [
@@ -15,7 +15,10 @@ let performances = [
   }
 ];
 
-router.get("/", (req, res) => res.json(performances));
+router.get("/", (req, res) => {
+  res.json(performances);
+});
+
 router.post("/", (req, res) => {
   const data = req.body;
   if (!data.name || !data.function || !data.unit || !data.subProgram || !data.date) {
@@ -26,19 +29,21 @@ router.post("/", (req, res) => {
   performances.push(newPerformance);
   res.json(newPerformance);
 });
+
 router.put("/:id", (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id, 10);
   const index = performances.findIndex(p => p.id === id);
-  if (index === -1) return res.status(404).json({ error: "실적 없음" });
+  if (index === -1) return res.status(404).json({ error: "실적을 찾을 수 없습니다." });
   performances[index] = { ...performances[index], ...req.body };
   res.json(performances[index]);
 });
+
 router.delete("/:id", (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = parseInt(req.params.id, 10);
   const index = performances.findIndex(p => p.id === id);
-  if (index === -1) return res.status(404).json({ error: "실적 없음" });
+  if (index === -1) return res.status(404).json({ error: "실적을 찾을 수 없습니다." });
   performances.splice(index, 1);
   res.json({ success: true });
 });
 
-export default router;
+module.exports = router;

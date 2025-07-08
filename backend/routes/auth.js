@@ -1,31 +1,39 @@
-// 📁 backend/routes/auth.js
 const express = require("express");
-const router = express.Router();
+const cors = require("cors");
 
-// 메모리 기반 사용자 목록
-const users = [];
+const app = express();
+const PORT = process.env.PORT;
 
-// 회원가입
-router.post("/signup", (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password)
-    return res.status(400).json({ error: "필수 입력값 누락" });
+app.use(cors());
+app.use(express.json());
 
-  if (users.find(u => u.email === email))
-    return res.status(409).json({ error: "이미 등록된 이메일입니다." });
-
-  users.push({ name, email, password });
-  res.json({ success: true, message: "회원가입 성공" });
+// Health Check 엔드포인트 (반드시 필요!)
+app.get("/healthz", (req, res) => {
+  res.send("OK");
 });
 
-// 로그인
-router.post("/login", (req, res) => {
-  const { email, password } = req.body;
-  const user = users.find(u => u.email === email && u.password === password);
-  if (user)
-    res.json({ success: true, token: "fake-jwt-token", name: user.name });
-  else
-    res.status(401).json({ error: "이메일 또는 비밀번호 오류" });
+// 기본 경로
+app.get("/", (req, res) => {
+  res.send("서버가 정상적으로 작동 중입니다.");
 });
 
-module.exports = router;
+// 테스트용 hello API
+app.get("/api/hello", (req, res) => {
+  res.json({ message: "Hello from server!" });
+});
+
+// 라우터 연결
+app.use("/api", require("./routes/auth"));
+app.use("/api", require("./routes/members"));
+app.use("/api/program-structure", require("./routes/programStructure"));
+app.use("/api/performances", require("./routes/performances"));
+app.use("/api/performance-summaries", require("./routes/performanceSummary"));
+
+// 404 핸들러
+app.use("*", (req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ API 서버가 ${PORT} 포트에서 실행 중`);
+});

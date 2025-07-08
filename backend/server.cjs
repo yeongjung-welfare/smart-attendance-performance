@@ -1,19 +1,16 @@
-// server.cjs
 const express = require("express");
 const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 5184;
+const PORT = process.env.PORT; // 꼭 이거 하나만 써야 Render 정상 작동
 
 app.use(cors());
 app.use(express.json());
 
-// 👉 '/' 경로 응답 추가
 app.get("/", (req, res) => {
   res.send("서버가 정상적으로 작동 중입니다.");
 });
 
-// 👉 '/api/hello' 경로 응답 추가
 app.get("/api/hello", (req, res) => {
   res.json({ message: "Hello from server!" });
 });

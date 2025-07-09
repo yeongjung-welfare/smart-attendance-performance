@@ -1,8 +1,6 @@
-// src/pages/Dashboard.jsx
 import React, { useEffect, useState } from "react";
 import DashboardCard from "../components/DashboardCard";
-import PerformanceChart from "../components/PerformanceChart";
-import AttendanceChart from "../components/AttendanceChart";
+import AttendancePerformanceChart from "../components/AttendancePerformanceChart";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { fetchProgramStructure } from "../api/fetchProgramStructure";
 
@@ -30,12 +28,13 @@ function Dashboard({ role }) {
     totalTeachers: 5
   };
 
+  // 예시 차트 데이터 (실제 운영시 API 연동)
   const performanceData = [
-    { month: "1월", 실적: 30 },
-    { month: "2월", 실적: 45 },
-    { month: "3월", 실적: 50 },
-    { month: "4월", 실적: 40 },
-    { month: "5월", 실적: 60 }
+    { date: "2025-01", 실적: 30 },
+    { date: "2025-02", 실적: 45 },
+    { date: "2025-03", 실적: 50 },
+    { date: "2025-04", 실적: 40 },
+    { date: "2025-05", 실적: 60 }
   ];
   const attendanceData = [
     { date: "2025-07-01", 출석: 80 },
@@ -63,10 +62,10 @@ function Dashboard({ role }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <ErrorBoundary>
-          <PerformanceChart data={performanceData} />
+          <AttendancePerformanceChart mode="performance" data={performanceData} />
         </ErrorBoundary>
         <ErrorBoundary>
-          <AttendanceChart data={attendanceData} />
+          <AttendancePerformanceChart mode="attendance" data={attendanceData} />
         </ErrorBoundary>
       </div>
     </div>

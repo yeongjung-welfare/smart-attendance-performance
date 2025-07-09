@@ -1,4 +1,3 @@
-// ✅ src/hooks/useUserRole.js
 import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -6,20 +5,22 @@ import { auth, db } from "../firebase";
 
 /**
  * 🔐 로그인한 사용자의 Firestore role 정보를 가져오는 hook
- * @returns {{ role: string|null, loading: boolean }}
+ * @returns {{ role: string|null, loading: boolean, uid: string|null }}
  */
 export function useUserRole() {
   const [role, setRole] = useState(null); // admin, teacher, staff 등
   const [loading, setLoading] = useState(true);
+  const [uid, setUid] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setRole(null);
+        setUid(null);
         setLoading(false);
         return;
       }
-
+      setUid(user.uid);
       try {
         const docRef = doc(db, "Users", user.uid);
         const docSnap = await getDoc(docRef);
@@ -37,9 +38,8 @@ export function useUserRole() {
         setLoading(false);
       }
     });
-
     return () => unsubscribe();
   }, []);
 
-  return { role, loading };
+  return { role, loading, uid };
 }

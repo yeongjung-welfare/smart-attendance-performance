@@ -1,5 +1,3 @@
-// 🔧 src/pages/SubProgramMemberManage.jsx (수정본)
-
 import React, { useEffect, useState } from "react";
 import {
   FormControl,
@@ -50,7 +48,6 @@ function SubProgramMemberManage() {
         const data = await getSubProgramMembers(subProgramName);
         setMembers(data);
       } else {
-        // 모든 세부사업의 데이터를 한꺼번에 불러오지는 않음 (필터를 먼저 선택하게 유도)
         setMembers([]);
       }
     } catch (e) {

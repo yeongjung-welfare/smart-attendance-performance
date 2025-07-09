@@ -1,4 +1,3 @@
-// src/components/SideNav.jsx
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -20,22 +19,22 @@ function SideNav({ role, onLogout }) {
         {role === "admin" && (
           <>
             <li>
-              <Link to="/members" className="block py-2 hover:bg-blue-100 rounded">회원관리</Link>
+              <Link to="/members" className="block py-2 hover:bg-blue-100 rounded">전체 이용자 관리</Link>
             </li>
             <li>
               <Link to="/subprogram-members" className="block py-2 hover:bg-blue-100 rounded">세부사업별 이용자 관리</Link>
             </li>
             <li>
-              <Link to="/attendance" className="block py-2 hover:bg-blue-100 rounded">출석관리</Link>
-            </li>
-            <li>
-              <Link to="/performance" className="block py-2 hover:bg-blue-100 rounded">실적관리</Link>
+              <Link to="/attendance" className="block py-2 hover:bg-blue-100 rounded">출석·실적 등록 및 관리</Link>
             </li>
             <li>
               <Link to="/performance-stats" className="block py-2 hover:bg-blue-100 rounded">실적 통계/조회</Link>
             </li>
             <li>
-              <Link to="/team-map" className="block py-2 hover:bg-blue-100 rounded">팀-세부사업명 매핑 관리</Link>
+              <Link to="/team-map" className="block py-2 hover:bg-blue-100 rounded">팀-세부사업 매칭 관리</Link>
+            </li>
+            <li>
+              <Link to="/teacher-map" className="block py-2 hover:bg-blue-100 rounded">강사-세부사업 매칭 관리</Link>
             </li>
             <li>
               <Link to="/admin" className="block py-2 hover:bg-blue-100 rounded">승인관리</Link>
@@ -45,10 +44,7 @@ function SideNav({ role, onLogout }) {
         {role === "teacher" && (
           <>
             <li>
-              <Link to="/attendance" className="block py-2 hover:bg-blue-100 rounded">출석관리</Link>
-            </li>
-            <li>
-              <Link to="/performance" className="block py-2 hover:bg-blue-100 rounded">실적관리</Link>
+              <Link to="/attendance" className="block py-2 hover:bg-blue-100 rounded">출석·실적 관리</Link>
             </li>
             <li>
               <Link to="/performance-stats" className="block py-2 hover:bg-blue-100 rounded">실적 통계/조회</Link>
@@ -60,7 +56,6 @@ function SideNav({ role, onLogout }) {
             <Link to="/my-performance" className="block py-2 hover:bg-blue-100 rounded">내 실적</Link>
           </li>
         )}
-        {/* 로그인 상태면 로그아웃 버튼, 아니면 로그인/회원가입 */}
         {role ? (
           <li>
             <button

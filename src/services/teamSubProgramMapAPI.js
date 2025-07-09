@@ -14,7 +14,6 @@ import { db } from "../firebase";
  */
 export async function getStructureBySubProgram(subProgramName) {
   if (!subProgramName || typeof subProgramName !== "string") return null;
-
   try {
     const q = query(
       collection(db, "TeamSubProgramMap"),
@@ -22,7 +21,6 @@ export async function getStructureBySubProgram(subProgramName) {
     );
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
-
     const data = snapshot.docs[0].data();
     return {
       team: data["팀명"] || "",
@@ -36,18 +34,26 @@ export async function getStructureBySubProgram(subProgramName) {
 }
 
 /**
- * 구조 정보 등록
+ * 구조 정보 등록 (중복 체크, 필수값 체크)
  */
 export async function addTeamSubProgramMap(data) {
   if (
-    !data["팀명"] ||
-    !data["기능"] ||
-    !data["단위사업명"] ||
-    !data["세부사업명"]
+    !data["팀명"] || !data["기능"] || !data["단위사업명"] || !data["세부사업명"] ||
+    !data["팀명"].trim() || !data["기능"].trim() ||
+    !data["단위사업명"].trim() || !data["세부사업명"].trim()
   ) {
-    throw new Error("모든 필드가 필요합니다.");
+    throw new Error("모든 필드를 입력해주세요.");
   }
-
+  // 중복 체크(세부사업명+팀명+기능+단위사업명)
+  const q = query(
+    collection(db, "TeamSubProgramMap"),
+    where("세부사업명", "==", data["세부사업명"].trim()),
+    where("팀명", "==", data["팀명"].trim()),
+    where("기능", "==", data["기능"].trim()),
+    where("단위사업명", "==", data["단위사업명"].trim())
+  );
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) throw new Error("동일한 조합의 데이터가 이미 존재합니다.");
   await addDoc(collection(db, "TeamSubProgramMap"), {
     팀명: data["팀명"].trim(),
     기능: data["기능"].trim(),
@@ -64,7 +70,6 @@ export async function deleteTeamSubProgramMap(docId) {
   if (!docId || typeof docId !== "string") {
     throw new Error("유효한 문서 ID가 필요합니다.");
   }
-
   try {
     await deleteDoc(doc(db, "TeamSubProgramMap", docId));
     console.log("✅ 삭제 완료:", docId);

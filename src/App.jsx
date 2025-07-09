@@ -1,23 +1,20 @@
-// src/App.jsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import AppBar from "./components/AppBar";
 import SideNav from "./components/SideNav";
-
 import Dashboard from "./pages/Dashboard";
 import MemberManage from "./pages/MemberManage";
 import AdminPanel from "./pages/AdminPanel";
-import AttendanceManage from "./pages/AttendanceManage";
-import PerformanceManage from "./pages/PerformanceManage";
+import AttendancePerformanceManage from "./pages/AttendancePerformanceManage";
 import SubProgramMemberManage from "./pages/SubProgramMemberManage";
 import TeamSubProgramMapManage from "./pages/TeamSubProgramMapManage";
+import TeacherSubProgramMapManage from "./pages/TeacherSubProgramMapManage";
 import PerformanceStatsPage from "./pages/PerformanceStatsPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import MyPerformancePage from "./pages/MyPerformancePage";
 import PendingPage from "./pages/PendingPage";
 import MemberQuickRegister from "./pages/MemberQuickRegister";
-
 import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -88,10 +85,10 @@ function App() {
                 <Route path="/members" element={<MemberManage />} />
                 <Route path="/members/quick-register" element={<MemberQuickRegister />} />
                 <Route path="/subprogram-members" element={<SubProgramMemberManage />} />
-                <Route path="/attendance" element={<AttendanceManage />} />
-                <Route path="/performance" element={<PerformanceManage />} />
+                <Route path="/attendance" element={<AttendancePerformanceManage />} />
                 <Route path="/performance-stats" element={<PerformanceStatsPage />} />
                 <Route path="/team-map" element={<TeamSubProgramMapManage />} />
+                <Route path="/teacher-map" element={<TeacherSubProgramMapManage />} />
                 <Route path="/admin" element={<AdminPanel />} />
               </>
             )}
@@ -99,8 +96,7 @@ function App() {
             {/* 강사 */}
             {role === "teacher" && (
               <>
-                <Route path="/attendance" element={<AttendanceManage />} />
-                <Route path="/performance" element={<PerformanceManage />} />
+                <Route path="/attendance" element={<AttendancePerformanceManage />} />
                 <Route path="/performance-stats" element={<PerformanceStatsPage />} />
               </>
             )}

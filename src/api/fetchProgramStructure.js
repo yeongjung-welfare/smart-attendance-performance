@@ -1,5 +1,6 @@
+const BASE_URL = 'https://smart-attendance-performance.onrender.com';
 export async function fetchProgramStructure() {
-  const res = await fetch("/api/program-structure");
+  const res = await fetch(`${BASE_URL}/api/program-structure`);
   if (!res.ok) throw new Error("사업구조 불러오기 실패");
   const contentType = res.headers.get("content-type");
   if (!contentType || !contentType.includes("application/json")) {

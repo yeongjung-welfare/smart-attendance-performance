@@ -1,26 +1,30 @@
-require("dotenv").config(); // ← 맨 위에 추가!
+require("dotenv").config(); // 반드시 맨 위!
+
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
-const PORT = process.env.PORT; // Render에서 반드시 필요
+const PORT = process.env.PORT || 3000; // 로컬 기본값
 
 app.use(cors());
 app.use(express.json());
 
-// Health Check (Render 설정에 맞게)
+// dist 폴더의 정적 파일 서빙
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Health Check (Render용)
 app.get("/healthz", (req, res) => {
   res.send("OK");
 });
 
-// 기본 경로
-app.get("/", (req, res) => {
-  res.send("서버가 정상적으로 작동 중입니다.");
+// 기본 경로 (index.html 서빙)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 // 라우터 연결
 app.use("/api", require("./routes/hello"));
-app.use("/api", require("./routes/members"));
 app.use("/api", require("./routes/members"));
 app.use("/api/program-structure", require("./routes/programStructure"));
 app.use("/api/performances", require("./routes/performances"));

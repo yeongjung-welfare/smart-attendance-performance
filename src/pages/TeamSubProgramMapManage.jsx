@@ -1,4 +1,3 @@
-// src/pages/TeamSubProgramMapManage.jsx
 import React, { useEffect, useState } from "react";
 import {
   getAllTeamSubProgramMaps,
@@ -13,6 +12,7 @@ import {
   Select,
   InputLabel,
   FormControl,
+  Alert
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import { exportToExcel } from "../utils/exportToExcel";
@@ -27,8 +27,8 @@ function TeamSubProgramMapManage() {
     mainProgramName: "",
     subProgramName: "",
   });
+  const [error, setError] = useState("");
 
-  // 데이터 로딩
   const fetchData = async () => {
     const data = await getAllTeamSubProgramMaps();
     setMappings(data);
@@ -38,43 +38,37 @@ function TeamSubProgramMapManage() {
     fetchData();
   }, []);
 
-  // 입력값 변경 처리
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  // 저장 또는 수정
   const handleSave = async () => {
+    setError("");
     const { functionType, teamName, mainProgramName, subProgramName } = form;
     if (!functionType || !teamName || !mainProgramName || !subProgramName) {
-      alert("모든 항목을 입력해주세요.");
+      setError("모든 항목을 입력해주세요.");
       return;
     }
-
-    const isDuplicate = mappings.some(
-      (item) =>
-        item.subProgramName === subProgramName &&
-        item.teamName === teamName &&
-        item.functionType === functionType &&
-        item.mainProgramName === mainProgramName
-    );
-    if (isDuplicate) {
-      alert("동일한 조합의 데이터가 이미 존재합니다.");
-      return;
+    try {
+      await addTeamSubProgramMap({
+        "팀명": teamName,
+        "기능": functionType,
+        "단위사업명": mainProgramName,
+        "세부사업명": subProgramName
+      });
+      setForm({
+        functionType: "",
+        teamName: "",
+        mainProgramName: "",
+        subProgramName: "",
+      });
+      setEditing(null);
+      fetchData();
+    } catch (err) {
+      setError(err.message);
     }
-
-    await addTeamSubProgramMap(form);
-    setForm({
-      functionType: "",
-      teamName: "",
-      mainProgramName: "",
-      subProgramName: "",
-    });
-    setEditing(null);
-    fetchData();
   };
 
-  // 수정 버튼 클릭
   const handleEdit = (map) => {
     setForm({
       functionType: map.functionType,
@@ -85,7 +79,6 @@ function TeamSubProgramMapManage() {
     setEditing(map.id);
   };
 
-  // 삭제
   const handleDelete = async (id) => {
     if (window.confirm("정말 삭제하시겠습니까?")) {
       await deleteTeamSubProgramMap(id);
@@ -93,7 +86,6 @@ function TeamSubProgramMapManage() {
     }
   };
 
-  // ✅ 엑셀 다운로드 - 검색된 목록 기준
   const handleExportExcel = () => {
     const formatted = filteredMappings.map((map) => ({
       세부사업명: map.subProgramName,
@@ -101,7 +93,6 @@ function TeamSubProgramMapManage() {
       기능: map.functionType,
       단위사업명: map.mainProgramName,
     }));
-
     exportToExcel({
       data: formatted,
       fileName: "팀별_세부사업_매핑",
@@ -109,14 +100,12 @@ function TeamSubProgramMapManage() {
     });
   };
 
-  // ✅ 검색 적용
   const filteredMappings = mappings.filter((map) =>
     `${map.subProgramName}${map.teamName}${map.functionType}${map.mainProgramName}`
       .toLowerCase()
       .includes(search.toLowerCase())
   );
 
-  // ✅ Autocomplete용 유니크 목록 생성 (선택 연동 반영)
   const uniqueMainProgramsByTeam = [...new Set(
     mappings
       .filter((m) => !form.teamName || m.teamName === form.teamName)
@@ -132,8 +121,7 @@ function TeamSubProgramMapManage() {
   return (
     <div className="p-6">
       <h2 className="text-xl font-bold mb-4">팀-세부사업명 매핑 관리</h2>
-
-      {/* 검색창 */}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <div className="mb-4">
         <TextField
           label="검색 (세부사업명 / 팀명 / 기능 / 단위사업명)"
@@ -143,8 +131,6 @@ function TeamSubProgramMapManage() {
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-
-      {/* 입력폼 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <FormControl>
           <InputLabel>기능</InputLabel>
@@ -159,7 +145,6 @@ function TeamSubProgramMapManage() {
             <MenuItem value="지역조직화 기능">지역조직화 기능</MenuItem>
           </Select>
         </FormControl>
-
         <FormControl>
           <InputLabel>팀명</InputLabel>
           <Select
@@ -175,7 +160,6 @@ function TeamSubProgramMapManage() {
             <MenuItem value="운영지원팀">운영지원팀</MenuItem>
           </Select>
         </FormControl>
-
         <Autocomplete
           freeSolo
           options={uniqueMainProgramsByTeam}
@@ -187,7 +171,6 @@ function TeamSubProgramMapManage() {
             <TextField {...params} label="단위사업명" required />
           )}
         />
-
         <Autocomplete
           freeSolo
           options={uniqueSubProgramsByMain}
@@ -200,8 +183,6 @@ function TeamSubProgramMapManage() {
           )}
         />
       </div>
-
-      {/* 저장/취소 버튼 */}
       <div className="flex gap-2 mb-6">
         <Button variant="contained" onClick={handleSave}>
           {editing ? "수정 완료" : "저장"}
@@ -224,18 +205,12 @@ function TeamSubProgramMapManage() {
           </Button>
         )}
       </div>
-
-      {/* 엑셀 다운로드 */}
       <div className="mb-6">
         <Button variant="outlined" color="primary" onClick={handleExportExcel}>
           엑셀 다운로드 (검색결과 기준)
         </Button>
       </div>
-
-      {/* 업로드 폼 */}
       <TeamSubProgramUploadForm onUploadComplete={fetchData} />
-
-      {/* 목록 테이블 */}
       <table className="w-full border text-sm mt-4">
         <thead className="bg-gray-100">
           <tr>

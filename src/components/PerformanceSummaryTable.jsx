@@ -1,4 +1,3 @@
-// PerformanceSummaryTable.jsx
 import React, { useState } from "react";
 import { DataGrid } from "@mui/x-data-grid";
 import { Button } from "@mui/material";
@@ -6,7 +5,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import PerformanceSummaryDetail from "./PerformanceSummaryDetail";
 import { exportToExcel } from "../utils/exportToExcel";
 
-function PerformanceSummaryTable({ summaries }) {
+function PerformanceSummaryTable({ summaries, loading }) {
   const [detail, setDetail] = useState(null);
 
   const excelData = summaries.map((row) => ({
@@ -85,7 +84,6 @@ function PerformanceSummaryTable({ summaries }) {
       >
         엑셀 다운로드
       </Button>
-
       <DataGrid
         rows={summaries}
         columns={columns}
@@ -95,15 +93,14 @@ function PerformanceSummaryTable({ summaries }) {
         getRowId={(row) =>
           row.programId || `${row.function}-${row.unit}-${row.subProgram}-${row.year}-${row.month}-${row.team}`
         }
+        loading={loading}
       />
-
       {detail && (
         <PerformanceSummaryDetail
           summary={detail}
           onClose={() => setDetail(null)}
         />
       )}
-
       {(!summaries || summaries.length === 0) && (
         <div className="text-gray-500 mt-8">조회 결과가 없습니다.</div>
       )}

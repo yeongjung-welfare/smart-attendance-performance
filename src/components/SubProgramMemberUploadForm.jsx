@@ -1,5 +1,3 @@
-// 🔧 src/components/SubProgramMemberUploadForm.jsx (보완 + 기존 스타일 유지)
-
 import React, { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
@@ -10,8 +8,14 @@ import {
   LinearProgress
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import {
+  registerSubProgramMember,
+  updateSubProgramMember,
+  findMemberByNameAndPhone
+} from "../services/subProgramMemberAPI";
+import { getAgeGroup } from "../utils/ageGroup";
 
-// ✅ 연락처 포맷 정규화
+// 연락처 정규화
 function normalizePhone(phone) {
   const digits = (phone || "").replace(/\D/g, "");
   return digits.length === 11
@@ -19,25 +23,32 @@ function normalizePhone(phone) {
     : phone || "";
 }
 
-// ✅ 생년월일 정규화 (yyyy-MM-dd 형식)
+// 생년월일 정규화
 function normalizeDate(date) {
+  if (!date) return "";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
   try {
+    if (typeof date === "number") {
+      const excelStart = new Date(1899, 11, 30);
+      const d = new Date(excelStart.getTime() + (date - 1) * 86400000);
+      return d.toISOString().split("T")[0];
+    }
     const d = new Date(date);
-    return d.toISOString().split("T")[0];
+    return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
   } catch {
     return "";
   }
 }
 
-// ✅ 필수 헤더 정의
-const REQUIRED_HEADERS = ["이용자명", "성별", "생년월일"];
+const REQUIRED_HEADERS = ["이용자명", "세부사업명"];
 
 function SubProgramMemberUploadForm({ onSuccess, onClose, userInfo }) {
   const fileInput = useRef();
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
 
-  // ✅ 파일 핸들링 함수
+  const isTeacher = userInfo?.role === "teacher";
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -57,7 +68,6 @@ function SubProgramMemberUploadForm({ onSuccess, onClose, userInfo }) {
         return;
       }
 
-      // ✅ 헤더 누락 확인
       const firstRow = Object.keys(raw[0]);
       const missingHeaders = REQUIRED_HEADERS.filter(h => !firstRow.includes(h));
       if (missingHeaders.length > 0) {
@@ -66,27 +76,64 @@ function SubProgramMemberUploadForm({ onSuccess, onClose, userInfo }) {
         return;
       }
 
-      // ✅ 데이터 정제 및 변환
-      const rows = raw.map(row => ({
-        name: row["이용자명"]?.trim() || "",
-        gender: row["성별"]?.trim() || "",
-        birthdate: normalizeDate(row["생년월일"]),
-        phone: normalizePhone(row["연락처"]),
-        address: row["주소"]?.trim() || "",
-        incomeType: row["소득구분"]?.trim() || "",
-        disability: row["장애유무"]?.trim() || "",
-        paidType: row["유료/무료"]?.trim() || "",
-        status: row["이용상태"]?.trim() || "이용",
-        team: row["팀명"]?.trim() || "",
-        unitProgram: row["단위사업명"]?.trim() || "",
-        subProgram: row["세부사업명"]?.trim() || "",
-        note: row["비고"]?.trim() || "",
-        ageGroup: row["연령대"]?.trim() || "",
-        createdAt: new Date().toISOString()
-      }));
+      let successRows = [], failRows = [];
 
-      onSuccess?.(rows);
-      setResult({ success: rows.length });
+      for (let idx = 0; idx < raw.length; idx++) {
+        const row = raw[idx];
+        const name = row["이용자명"]?.trim();
+        const subProgram = row["세부사업명"]?.trim();
+        if (!name || !subProgram) {
+          failRows.push({ idx: idx + 2, reason: "필수값 누락 (이용자명, 세부사업명)" });
+          continue;
+        }
+
+        if (isTeacher && !(userInfo?.subPrograms || []).includes(subProgram)) {
+          failRows.push({ idx: idx + 2, reason: `접근 불가한 세부사업명: ${subProgram}` });
+          continue;
+        }
+
+        const phone = normalizePhone(row["연락처"]);
+        const birthdate = normalizeDate(row["생년월일"]);
+        const ageGroup = row["연령대"] || (birthdate ? getAgeGroup(birthdate.slice(0, 4)) : "");
+
+        const memberData = {
+          name,
+          gender: row["성별"]?.trim() || "",
+          phone,
+          birthdate,
+          address: row["주소"]?.trim() || "",
+          incomeType: row["소득구분"]?.trim() || "",
+          disability: row["장애유무"]?.trim() || "",
+          paidType: row["유료/무료"]?.trim() || "",
+          status: row["이용상태"]?.trim() || "이용",
+          subProgram,
+          note: row["비고"]?.trim() || "",
+          ageGroup,
+          createdAt: new Date().toISOString()
+        };
+
+        try {
+          const existing = await findMemberByNameAndPhone(name, phone);
+          if (existing && existing.subProgram === subProgram) {
+            await updateSubProgramMember(existing.id, memberData);
+          } else {
+            await registerSubProgramMember(memberData);
+          }
+          successRows.push(memberData);
+        } catch (error) {
+          failRows.push({ idx: idx + 2, reason: error.message || "등록 오류" });
+        }
+      }
+
+      setResult({
+        success: successRows.length,
+        fail: failRows.length,
+        failRows
+      });
+
+      if (typeof onSuccess === "function") {
+        onSuccess(successRows);
+      }
     } catch (err) {
       setResult({ error: err.message });
     }
@@ -94,13 +141,23 @@ function SubProgramMemberUploadForm({ onSuccess, onClose, userInfo }) {
     setUploading(false);
   };
 
+  if (isTeacher) {
+    return (
+      <Paper sx={{ my: 2, p: 3 }}>
+        <Alert severity="warning">
+          강사는 대량 이용자 업로드 기능을 사용할 수 없습니다.
+        </Alert>
+        <Button onClick={onClose} sx={{ mt: 2 }}>닫기</Button>
+      </Paper>
+    );
+  }
+
   return (
-    <Paper className="my-2 p-4 min-w-[600px] max-w-full overflow-x-auto mx-auto">
+    <Paper sx={{ my: 2, p: 3, minWidth: 600, mx: "auto" }}>
       <Typography variant="h6" gutterBottom>
         세부사업 이용자 대량 업로드
       </Typography>
 
-      {/* ✅ 파일 선택 */}
       <Button
         component="label"
         variant="contained"
@@ -117,13 +174,24 @@ function SubProgramMemberUploadForm({ onSuccess, onClose, userInfo }) {
         />
       </Button>
 
-      {/* ✅ 업로드 상태 표시 */}
       {uploading && <LinearProgress sx={{ mt: 2 }} />}
 
-      {/* ✅ 결과 메시지 */}
-      {result?.success && (
+      {result?.success > 0 && (
         <Alert severity="success" sx={{ mt: 2 }}>
-          {result.success}명 회원 등록 준비 완료
+          {result.success}명 등록/업데이트 완료
+          {result.fail > 0 && (
+            <>
+              <br />
+              <strong style={{ color: "#d32f2f" }}>
+                {result.fail}건 실패:
+              </strong>
+              <br />
+              {result.failRows?.slice(0, 5).map((r) => (
+                <span key={r.idx}>엑셀 {r.idx}행: {r.reason}<br /></span>
+              ))}
+              {result.failRows?.length > 5 && " ..."}
+            </>
+          )}
         </Alert>
       )}
       {result?.error && (
@@ -132,15 +200,9 @@ function SubProgramMemberUploadForm({ onSuccess, onClose, userInfo }) {
         </Alert>
       )}
 
-      {/* ✅ 업로드 형식 안내 */}
       <Typography variant="body2" sx={{ mt: 2 }}>
-        <strong>※ 업로드 가능한 항목 목록:</strong><br />
-        필수: <code>이용자명, 성별, 생년월일</code><br />
-        선택: 연락처, 주소, 소득구분, 장애유무, 유료/무료, 이용상태, 단위사업명, 팀명, 연령대, 비고 등
-      </Typography>
-
-      <Typography variant="body2" sx={{ mt: 1 }}>
-        엑셀 샘플 파일: <a href="/sample/member_upload_sample.xlsx" download>다운로드</a>
+        <strong>※ 필수 항목:</strong> <code>이용자명, 세부사업명</code><br />
+        <strong>선택 항목:</strong> 성별, 생년월일, 연락처, 주소, 소득구분, 장애유무, 유료/무료, 이용상태, 비고 등
       </Typography>
 
       <Button onClick={onClose} sx={{ mt: 2 }}>

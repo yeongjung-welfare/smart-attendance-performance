@@ -16,7 +16,8 @@ function SideNav({ role, onLogout }) {
         <li>
           <Link to="/dashboard" className="block py-2 hover:bg-blue-100 rounded">대시보드</Link>
         </li>
-        {role === "admin" && (
+
+        {(role === "admin" || role === "manager") && (
           <>
             <li>
               <Link to="/members" className="block py-2 hover:bg-blue-100 rounded">전체 이용자 관리</Link>
@@ -36,11 +37,15 @@ function SideNav({ role, onLogout }) {
             <li>
               <Link to="/teacher-map" className="block py-2 hover:bg-blue-100 rounded">강사-세부사업 매칭 관리</Link>
             </li>
-            <li>
-              <Link to="/admin" className="block py-2 hover:bg-blue-100 rounded">승인관리</Link>
-            </li>
           </>
         )}
+
+        {role === "admin" && (
+          <li>
+            <Link to="/admin" className="block py-2 hover:bg-blue-100 rounded">승인관리</Link>
+          </li>
+        )}
+
         {role === "teacher" && (
           <>
             <li>
@@ -51,11 +56,13 @@ function SideNav({ role, onLogout }) {
             </li>
           </>
         )}
+
         {role === "user" && (
           <li>
             <Link to="/my-performance" className="block py-2 hover:bg-blue-100 rounded">내 실적</Link>
           </li>
         )}
+
         {role ? (
           <li>
             <button

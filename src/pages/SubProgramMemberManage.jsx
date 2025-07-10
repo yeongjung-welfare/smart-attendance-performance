@@ -20,7 +20,9 @@ import {
   getSubProgramMembers,
   registerSubProgramMember,
   deleteSubProgramMember,
-  deleteMultipleSubProgramMembers
+  deleteMultipleSubProgramMembers,
+  findMemberByNameAndPhone,
+  updateSubProgramMember
 } from "../services/subProgramMemberAPI";
 
 function SubProgramMemberManage() {
@@ -33,13 +35,15 @@ function SubProgramMemberManage() {
   const role = user?.role;
   const allowedSubPrograms = user?.subPrograms || [];
 
-  // ✅ Firestore에서 세부사업 이용자 불러오기
   useEffect(() => {
-    if (role === "teacher" && allowedSubPrograms.length === 1) {
-      loadMembers(allowedSubPrograms[0]);
-    } else {
-      loadMembers();
+    if (role !== "teacher") {
+      if (allowedSubPrograms.length === 1) {
+        loadMembers(allowedSubPrograms[0]);
+      } else {
+        loadMembers();
+      }
     }
+    // eslint-disable-next-line
   }, [role]);
 
   const loadMembers = async (subProgramName = "") => {
@@ -56,7 +60,7 @@ function SubProgramMemberManage() {
   };
 
   useEffectOnce(() => {
-    if (role === "teacher" && allowedSubPrograms.length === 1) {
+    if (role !== "teacher" && allowedSubPrograms.length === 1) {
       setSelectedProgram(allowedSubPrograms[0]);
     }
   });
@@ -69,6 +73,17 @@ function SubProgramMemberManage() {
 
   const handleRegister = async (member) => {
     try {
+      if (member.phone) {
+        const exist = await findMemberByNameAndPhone(member.name.trim(), member.phone.trim());
+        if (exist) {
+          await updateSubProgramMember(exist.id, member);
+          showSnackbar("동일인 정보 업데이트 완료", "info");
+          if (member.subProgram === selectedProgram) {
+            await loadMembers(selectedProgram);
+          }
+          return;
+        }
+      }
       const newId = await registerSubProgramMember(member);
       if (newId) {
         showSnackbar("이용자 등록 완료", "success");
@@ -82,17 +97,23 @@ function SubProgramMemberManage() {
   };
 
   const handleUpload = async (rows) => {
-    let added = 0;
+    let added = 0, updated = 0;
     for (const row of rows) {
       try {
-        await registerSubProgramMember(row);
-        added++;
+        const exist = await findMemberByNameAndPhone(row.name, row.phone);
+        if (exist) {
+          await updateSubProgramMember(exist.id, row);
+          updated++;
+        } else {
+          await registerSubProgramMember(row);
+          added++;
+        }
       } catch {
         // 중복 또는 에러 무시
       }
     }
-    if (added > 0) {
-      showSnackbar(`${added}명 등록 완료`, "success");
+    if (added + updated > 0) {
+      showSnackbar(`${added}명 신규, ${updated}명 업데이트 완료`, "success");
       if (selectedProgram) await loadMembers(selectedProgram);
     }
     setShowUpload(false);
@@ -105,38 +126,48 @@ function SubProgramMemberManage() {
     showSnackbar("삭제 완료", "info");
   };
 
+  const handleBulkDelete = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    await deleteMultipleSubProgramMembers(ids);
+    await loadMembers(selectedProgram);
+    showSnackbar(`${ids.length}명 삭제 완료`, "info");
+  };
+
   const canDelete = (member) => {
     if (role === "admin" || role === "manager") return true;
-    if (role === "teacher") {
-      return allowedSubPrograms.includes(member.subProgram);
-    }
     return false;
   };
 
   const filteredSubPrograms =
-    role === "teacher" ? allowedSubPrograms : subPrograms;
+    role === "teacher" ? [] : role === "manager" ? allowedSubPrograms : subPrograms;
+
+  if (role === "teacher") {
+    return (
+      <div className="p-8">
+        {SnackbarComp}
+        <h2 className="text-2xl font-bold mb-4">세부사업별 이용자 명부 관리</h2>
+        <p>⚠️ 강사는 이용자 명부 관리 권한이 없습니다.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">
       {SnackbarComp}
       <h2 className="text-2xl font-bold mb-4">세부사업별 이용자 명부 관리</h2>
 
-      {role !== "teacher" && (
-        <SubProgramMemberRegisterForm
-          subPrograms={subPrograms}
-          onRegister={handleRegister}
-        />
-      )}
+      <SubProgramMemberRegisterForm
+        subPrograms={subPrograms}
+        onRegister={handleRegister}
+      />
 
       <div className="flex flex-wrap gap-2 mb-4 items-center">
-        {role !== "teacher" && (
-          <Button
-            variant="outlined"
-            onClick={() => setShowUpload(true)}
-          >
-            대량 이용자 업로드
-          </Button>
-        )}
+        <Button
+          variant="outlined"
+          onClick={() => setShowUpload(true)}
+        >
+          대량 이용자 업로드
+        </Button>
         <ExportButton
           data={members}
           fileName="전체_이용자명부.xlsx"
@@ -166,6 +197,7 @@ function SubProgramMemberManage() {
       <SubProgramMemberTable
         members={members}
         onDelete={handleDelete}
+        onBulkDelete={handleBulkDelete}
         canDelete={canDelete}
       />
 

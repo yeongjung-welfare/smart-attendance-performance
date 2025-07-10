@@ -1,4 +1,3 @@
-// 🔧 src/services/memberAPI.js
 import {
   collection,
   addDoc,
@@ -10,7 +9,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "../firebase";
-import generateUniqueId from "../utils/generateUniqueId"; // 🔧 UUID 생성기
+import generateUniqueId from "../utils/generateUniqueId";
 
 const memberCollection = collection(db, "Members");
 
@@ -51,11 +50,37 @@ export async function checkDuplicateMember({ name, birthdate, phone }) {
   }
 }
 
+// 빈값이 아닌 필드만 기존 데이터에 덮어씌우는 업데이트 함수
+export async function updateMemberWithNonEmptyFields(member) {
+  try {
+    const q = query(
+      memberCollection,
+      where("name", "==", member.name),
+      where("birthdate", "==", member.birthdate),
+      where("phone", "==", member.phone)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return false;
+    const docSnap = snapshot.docs[0];
+    const existing = docSnap.data();
+    const updatedData = { ...existing };
+    Object.keys(member).forEach((key) => {
+      if (member[key] !== "" && member[key] !== undefined) {
+        updatedData[key] = member[key];
+      }
+    });
+    await updateDoc(doc(db, "Members", docSnap.id), updatedData);
+    return true;
+  } catch (error) {
+    console.error("빈값 제외 업데이트 오류:", error);
+    return false;
+  }
+}
+
 export async function registerMember(member) {
   try {
     const isDuplicate = await checkDuplicateMember(member);
     if (isDuplicate) {
-      console.warn("중복 회원:", member.name, member.birthdate, member.phone);
       return { success: false, reason: "duplicate" };
     }
 

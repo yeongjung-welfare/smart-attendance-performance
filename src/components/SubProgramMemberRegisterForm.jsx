@@ -1,17 +1,19 @@
-import React, { useState } from "react";
-import { generateUserId } from "../utils/generateId";
+import React, { useState, useEffect } from "react";
 import {
   TextField,
   Button,
   Grid,
   MenuItem,
   Paper,
-  Typography
+  Typography,
+  Alert
 } from "@mui/material";
+import { getAgeGroup } from "../utils/ageGroup";
+import { findMemberByNameAndPhone } from "../services/subProgramMemberAPI";
+import { generateUserId } from "../utils/generateId";
+import { useUser } from "../hooks/useUser";
 
 const defaultForm = {
-  team: "",
-  unitProgram: "",
   subProgram: "",
   name: "",
   gender: "",
@@ -27,51 +29,79 @@ const defaultForm = {
 
 function SubProgramMemberRegisterForm({ subPrograms, onRegister }) {
   const [form, setForm] = useState(defaultForm);
+  const [error, setError] = useState("");
+  const { user } = useUser();
+  const role = user?.role;
+  const allowedSubPrograms = user?.subPrograms || [];
+
+  useEffect(() => {
+    if (form.birthdate && !form.ageGroup) {
+      const birthYear = form.birthdate.slice(0, 4);
+      setForm((prev) => ({ ...prev, ageGroup: getAgeGroup(birthYear) }));
+    }
+  }, [form.birthdate]);
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!form.name || !form.gender || !form.subProgram || !form.paidType) return;
-
+    const { name, phone, subProgram } = form;
+    if (!name || !subProgram) {
+      setError("이용자명과 세부사업명은 필수 입력입니다.");
+      return;
+    }
+    if (phone) {
+      const existing = await findMemberByNameAndPhone(name.trim(), phone.trim());
+      if (existing && existing.subProgram === subProgram) {
+        setError("이미 동일한 세부사업에 등록된 이용자입니다.");
+        return;
+      }
+    }
     const member = {
       ...form,
       userId: generateUserId(),
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
-
-    onRegister(member);
-    setForm(defaultForm);
+    try {
+      await onRegister(member);
+      setForm(defaultForm);
+      setError("");
+    } catch (err) {
+      setError(err.message || "회원 등록에 실패했습니다.");
+    }
   };
 
+  const filteredSubPrograms =
+    role === "teacher" ? allowedSubPrograms : subPrograms;
+
   return (
-    <Paper className="p-4 mb-6" sx={{ p: 3 }}>
+    <Paper sx={{ p: 3, mb: 3 }}>
       <Typography variant="h6" gutterBottom>
-        📌 이용자 개별 등록
+        📌 세부사업별 이용자 개별 등록
       </Typography>
-      <form onSubmit={handleSubmit}>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      <form onSubmit={handleSubmit} autoComplete="off">
         <Grid container spacing={2}>
-          {/* 1열: 팀, 단위, 세부 */}
-          <Grid item xs={12} sm={3}>
-            <TextField label="팀명" name="team" value={form.team} onChange={handleChange} fullWidth />
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <TextField label="단위사업명" name="unitProgram" value={form.unitProgram} onChange={handleChange} fullWidth />
-          </Grid>
-          <Grid item xs={12} sm={3}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               label="세부사업명"
               name="subProgram"
               value={form.subProgram}
               onChange={handleChange}
-              required
               fullWidth
+              required
             >
-              {subPrograms.map((sp) => (
+              {filteredSubPrograms.map((sp) => (
                 <MenuItem key={sp} value={sp}>
                   {sp}
                 </MenuItem>
@@ -79,44 +109,79 @@ function SubProgramMemberRegisterForm({ subPrograms, onRegister }) {
             </TextField>
           </Grid>
 
-          {/* 2열: 이름, 성별, 연락처 */}
-          <Grid item xs={12} sm={2}>
-            <TextField label="이용자명" name="name" value={form.name} onChange={handleChange} required fullWidth />
+          <Grid xs={12} sm={4}>
+            <TextField
+              label="이용자명"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              required
+              fullWidth
+            />
           </Grid>
-          <Grid item xs={12} sm={2}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               label="성별"
               name="gender"
               value={form.gender}
               onChange={handleChange}
-              required
               fullWidth
             >
               <MenuItem value="남">남</MenuItem>
               <MenuItem value="여">여</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={3}>
-            <TextField label="연락처" name="phone" value={form.phone} onChange={handleChange} fullWidth />
+
+          <Grid xs={12} sm={4}>
+            <TextField
+              label="연락처"
+              name="phone"
+              value={form.phone}
+              onChange={handleChange}
+              placeholder="010-0000-0000"
+              fullWidth
+            />
+          </Grid>
+          <Grid xs={12} sm={4}>
+            <TextField
+              label="생년월일"
+              name="birthdate"
+              value={form.birthdate}
+              onChange={handleChange}
+              placeholder="YYYY-MM-DD"
+              fullWidth
+            />
+          </Grid>
+          <Grid xs={12} sm={4}>
+            <TextField
+              label="연령대"
+              name="ageGroup"
+              value={form.ageGroup}
+              fullWidth
+              disabled
+            />
           </Grid>
 
-          {/* 3열: 생년월일, 연령대, 거주지 */}
-          <Grid item xs={12} sm={3}>
-            <TextField label="생년월일" name="birthdate" value={form.birthdate} onChange={handleChange} fullWidth />
+          <Grid xs={12} sm={6}>
+            <TextField
+              label="거주지"
+              name="address"
+              value={form.address}
+              onChange={handleChange}
+              fullWidth
+            />
           </Grid>
-          <Grid item xs={12} sm={2}>
-            <TextField label="연령대" name="ageGroup" value={form.ageGroup} onChange={handleChange} fullWidth />
+          <Grid xs={12} sm={6}>
+            <TextField
+              label="소득구분"
+              name="incomeType"
+              value={form.incomeType}
+              onChange={handleChange}
+              fullWidth
+            />
           </Grid>
-          <Grid item xs={12} sm={3}>
-            <TextField label="거주지" name="address" value={form.address} onChange={handleChange} fullWidth />
-          </Grid>
-
-          {/* 4열: 소득구분, 장애유무, 유무료 */}
-          <Grid item xs={12} sm={2}>
-            <TextField label="소득구분" name="incomeType" value={form.incomeType} onChange={handleChange} fullWidth />
-          </Grid>
-          <Grid item xs={12} sm={2}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               label="장애유무"
@@ -129,23 +194,20 @@ function SubProgramMemberRegisterForm({ subPrograms, onRegister }) {
               <MenuItem value="없음">없음</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={2}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               label="유료/무료"
               name="paidType"
               value={form.paidType}
               onChange={handleChange}
-              required
               fullWidth
             >
               <MenuItem value="유료">유료</MenuItem>
               <MenuItem value="무료">무료</MenuItem>
             </TextField>
           </Grid>
-
-          {/* 5열: 이용상태 + 등록버튼 */}
-          <Grid item xs={12} sm={2}>
+          <Grid xs={12} sm={4}>
             <TextField
               select
               label="이용상태"
@@ -159,7 +221,8 @@ function SubProgramMemberRegisterForm({ subPrograms, onRegister }) {
               <MenuItem value="종결">종결</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={2}>
+
+          <Grid xs={12}>
             <Button type="submit" variant="contained" color="primary" fullWidth>
               등록
             </Button>

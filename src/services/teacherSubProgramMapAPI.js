@@ -44,3 +44,6 @@ export async function deleteTeacherSubProgramMap(docId) {
   }
   await deleteDoc(doc(db, "TeacherSubProgramMap", docId));
 }
+
+// Export getTeacherSubPrograms as an alias to getMySubPrograms for compatibility
+export { getMySubPrograms as getTeacherSubPrograms } from "./teamSubProgramMapAPI";

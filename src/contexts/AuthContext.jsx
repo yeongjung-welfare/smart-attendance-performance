@@ -35,3 +35,4 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useUser = () => useContext(AuthContext);
+export const useAuth = useUser; // 별칭처럼 처리

@@ -2,6 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import AppBar from "./components/AppBar";
 import SideNav from "./components/SideNav";
+import MobileNav from "./components/MobileNav"; // ✅ 모바일 메뉴 추가
+
+// 📄 페이지
 import Dashboard from "./pages/Dashboard";
 import MemberManage from "./pages/MemberManage";
 import AdminPanel from "./pages/AdminPanel";
@@ -15,6 +18,9 @@ import SignupPage from "./pages/SignupPage";
 import MyPerformancePage from "./pages/MyPerformancePage";
 import PendingPage from "./pages/PendingPage";
 import MemberQuickRegister from "./pages/MemberQuickRegister";
+import AttendanceTeacherPage from "./pages/AttendanceTeacherPage";
+import PerformanceTeacherPage from "./pages/PerformanceTeacherPage";
+
 import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -28,15 +34,16 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const docRef = doc(db, "Users", user.uid);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-            setRole(snap.data().role || null);
+          const userRef = doc(db, "Users", user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const userRole = userSnap.data().role || null;
+            setRole(userRole);
           } else {
             setRole(null);
           }
-        } catch (error) {
-          console.error("Firestore 오류:", error);
+        } catch (err) {
+          console.error("Firestore 오류:", err);
           setRole(null);
         }
       } else {
@@ -58,9 +65,18 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <SideNav role={role} onLogout={handleLogout} />
+      {/* 데스크탑 메뉴 */}
+      <div className="hidden md:block">
+        <SideNav role={role} onLogout={handleLogout} />
+      </div>
+
+      {/* 모바일 메뉴 */}
+      <div className="block md:hidden">
+        <MobileNav role={role} onLogout={handleLogout} />
+      </div>
+
       <div className="flex-1 flex flex-col">
-        <AppBar />
+        <AppBar role={role} onLogout={handleLogout} />
         <main className="flex-1 p-4">
           <Routes>
             {/* 기본 경로 */}
@@ -79,8 +95,8 @@ function App() {
               </>
             )}
 
-            {/* 관리자 */}
-            {role === "admin" && (
+            {/* 관리자 및 직원(manager 포함) */}
+            {(role === "admin" || role === "manager") && (
               <>
                 <Route path="/members" element={<MemberManage />} />
                 <Route path="/members/quick-register" element={<MemberQuickRegister />} />
@@ -89,15 +105,15 @@ function App() {
                 <Route path="/performance-stats" element={<PerformanceStatsPage />} />
                 <Route path="/team-map" element={<TeamSubProgramMapManage />} />
                 <Route path="/teacher-map" element={<TeacherSubProgramMapManage />} />
-                <Route path="/admin" element={<AdminPanel />} />
+                {role === "admin" && <Route path="/admin" element={<AdminPanel />} />}
               </>
             )}
 
-            {/* 강사 */}
+            {/* 강사(teacher) */}
             {role === "teacher" && (
               <>
-                <Route path="/attendance" element={<AttendancePerformanceManage />} />
-                <Route path="/performance-stats" element={<PerformanceStatsPage />} />
+                <Route path="/attendance-teacher" element={<AttendanceTeacherPage />} />
+                <Route path="/performance-teacher" element={<PerformanceTeacherPage />} />
               </>
             )}
 
@@ -108,7 +124,7 @@ function App() {
               </>
             )}
 
-            {/* 기타 잘못된 경로 */}
+            {/* 그 외 경로 */}
             <Route path="*" element={<div>404: 페이지를 찾을 수 없습니다.</div>} />
           </Routes>
         </main>

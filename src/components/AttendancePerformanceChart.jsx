@@ -28,7 +28,7 @@ ChartJS.register(
 
 function AttendancePerformanceChart({ mode, data }) {
   if (mode === "attendance") {
-    // 일별 출석자 수 차트
+    // ✅ 일별 출석자 수 차트
     const labels = data.map(d => d.date);
     const chartData = {
       labels,
@@ -38,15 +38,26 @@ function AttendancePerformanceChart({ mode, data }) {
           data: data.map(d => d.출석),
           borderColor: "#43a047",
           backgroundColor: "#a5d6a7",
-          fill: true
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointHoverRadius: 6
         }
       ]
     };
     const options = {
       responsive: true,
       plugins: {
-        legend: { display: false },
-        title: { display: false }
+        legend: { display: true, position: "top" },
+        title: {
+          display: true,
+          text: "최근 7일간 출석자 수",
+          font: { size: 16 }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: "날짜" } },
+        y: { title: { display: true, text: "출석 인원" }, beginAtZero: true }
       }
     };
     return (
@@ -57,7 +68,7 @@ function AttendancePerformanceChart({ mode, data }) {
     );
   }
 
-  // 실적: 월별 실적 합계 차트
+  // ✅ 월별 실적 합계 차트
   const labels = data.map(d => d.date || d.month);
   const chartData = {
     labels,
@@ -72,8 +83,16 @@ function AttendancePerformanceChart({ mode, data }) {
   const options = {
     responsive: true,
     plugins: {
-      legend: { display: false },
-      title: { display: false }
+      legend: { display: true, position: "top" },
+      title: {
+        display: true,
+        text: "최근 월별 실적 (연인원 기준)",
+        font: { size: 16 }
+      }
+    },
+    scales: {
+      x: { title: { display: true, text: "월" } },
+      y: { title: { display: true, text: "연인원 수" }, beginAtZero: true }
     }
   };
   return (

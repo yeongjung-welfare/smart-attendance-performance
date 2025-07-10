@@ -11,11 +11,11 @@ import {
 import { db } from "../firebase";
 import generateUniqueId from "../utils/generateUniqueId";
 
-// 🔗 Firestore 컬렉션
-const subProgramMemberCollection = collection(db, "members"); // 소문자 'members'
+// Firestore 컬렉션 (소문자 members)
+const subProgramMemberCollection = collection(db, "members");
 
 /**
- * ✅ 세부사업별 이용자 전체 조회
+ * 세부사업별 이용자 전체 조회
  */
 export async function getSubProgramMembers(subProgram) {
   try {
@@ -29,10 +29,34 @@ export async function getSubProgramMembers(subProgram) {
 }
 
 /**
- * ✅ 단일 회원 등록
+ * 이름+연락처로 기존 멤버 조회
+ */
+export async function findMemberByNameAndPhone(name, phone) {
+  try {
+    if (!name || !phone) return null;
+    const q = query(
+      subProgramMemberCollection,
+      where("name", "==", name),
+      where("phone", "==", phone)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const docSnap = snapshot.docs[0];
+    return { id: docSnap.id, ...docSnap.data() };
+  } catch (err) {
+    console.error("중복 멤버 조회 오류:", err);
+    return null;
+  }
+}
+
+/**
+ * 단일 회원 등록 (이용자명만 필수)
  */
 export async function registerSubProgramMember(member) {
   try {
+    if (!member.name || !member.name.trim()) {
+      throw new Error("이용자명은 필수 입력입니다.");
+    }
     const fullMember = {
       ...member,
       userId: generateUniqueId(),
@@ -47,7 +71,7 @@ export async function registerSubProgramMember(member) {
 }
 
 /**
- * ✅ 회원 정보 수정
+ * 회원 정보 수정
  */
 export async function updateSubProgramMember(id, updatedData) {
   try {
@@ -60,7 +84,7 @@ export async function updateSubProgramMember(id, updatedData) {
 }
 
 /**
- * ✅ 회원 삭제
+ * 회원 삭제
  */
 export async function deleteSubProgramMember(id) {
   try {
@@ -73,7 +97,7 @@ export async function deleteSubProgramMember(id) {
 }
 
 /**
- * ✅ 일괄 삭제
+ * 일괄 삭제
  */
 export async function deleteMultipleSubProgramMembers(ids) {
   try {

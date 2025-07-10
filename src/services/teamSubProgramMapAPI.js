@@ -80,6 +80,20 @@ export async function deleteTeamSubProgramMap(docId) {
 }
 
 /**
+ * 🔹 현재 로그인한 강사의 담당 세부사업명 목록 조회
+ */
+export async function getMySubPrograms(email) {
+  if (!email) throw new Error("이메일이 필요합니다.");
+
+  const q = query(
+    collection(db, "TeacherSubProgramMap"),
+    where("이메일", "==", email)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => doc.data().세부사업명);
+}
+
+/**
  * 전체 구조 매핑 목록 조회
  */
 export async function getAllTeamSubProgramMaps() {

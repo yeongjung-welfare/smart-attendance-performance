@@ -168,23 +168,56 @@ export async function uploadPerformanceData(rows) {
 // 실적 대량 업로드 (집계용: 세부사업명만 필수, 등록인원/실인원/연인원/건수/비고 등)
 export async function uploadBulkPerformanceSummary(rows) {
   const collectionRef = collection(db, "PerformanceSummary");
+
   for (const row of rows) {
-    // 세부사업명만 필수, 나머지 선택
+    const date = (row.date || "").trim();
+    const subProgram = (row.subProgram || "").trim();
+    const note = (row.note || "").trim(); // 비고 필드를 구분값으로 활용
+
+    // 필수값 누락 시 무시
+    if (!date || !subProgram) {
+      console.warn("❌ 필수값 누락: 날짜 또는 세부사업명 없음", row);
+      continue;
+    }
+
+    // ✅ 중복 체크: 같은 날짜 + 같은 세부사업명 + 같은 비고
+    const q = query(
+      collectionRef,
+      where("date", "==", date),
+      where("subProgram", "==", subProgram),
+      where("note", "==", note)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      console.log(`⛔ 중복 데이터로 업로드 생략됨: ${date}, ${subProgram}, ${note}`);
+      continue;
+    }
+
     const docData = {
-      subProgram: row.subProgram,
-      date: row.date || "",
-      registered: row.registered || 0,
-      actual: row.actual || 0,
-      total: row.total || 0,
-      cases: row.cases || 0,
-      note: row.note || "",
+      subProgram,
+      date,
+      registered: Number(row.registered) || 0,
+      actual: Number(row.actual) || 0,
+      total: Number(row.total) || 0,
+      cases: Number(row.cases) || 0,
+      note,
       createdAt: new Date().toISOString()
     };
+
     await addDoc(collectionRef, docData);
+    console.log(`✅ 등록 완료: ${date}, ${subProgram}, ${note}`);
   }
 }
 
 // 출석 대량 업로드 (예시, 실적과 유사하게 구현)
 export async function uploadAttendanceData(rows) {
   await saveAttendanceRecords(rows);
+}
+
+// 세부사업명 기준 실적 조회
+export async function fetchPerformanceBySubProgram(subProgramName) {
+  const collectionRef = collection(db, "PerformanceSummary");
+  const q = query(collectionRef, where("subProgram", "==", subProgramName));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }

@@ -1,16 +1,35 @@
-import React from "react";
-import { AppBar as MuiAppBar, Toolbar, Typography, Button } from "@mui/material";
+import React, { useState } from "react";
+import MenuIcon from "@mui/icons-material/Menu";
+import { AppBar as MuiAppBar, Toolbar, Typography, IconButton } from "@mui/material";
+import MobileNav from "./MobileNav";
 
-function AppBar() {
+function AppBar({ role, onLogout }) {
+  const [open, setOpen] = useState(false);
+
+  const handleToggle = () => setOpen((prev) => !prev);
+  const handleClose = () => setOpen(false);
+
   return (
-    <MuiAppBar position="static" color="primary" className="shadow-md">
-      <Toolbar>
-        <Typography variant="h6" className="flex-1">영중종합사회복지관 이용자 출석·실적 관리</Typography>
-        <Button color="inherit" href="/dashboard">대시보드</Button>
-        <Button color="inherit" href="/members">회원관리</Button>
-        <Button color="inherit" href="/admin">승인관리</Button>
-      </Toolbar>
-    </MuiAppBar>
+    <>
+      <MuiAppBar position="static" color="primary">
+        <Toolbar className="flex justify-between">
+          <IconButton
+            color="inherit"
+            aria-label="menu"
+            edge="start"
+            onClick={handleToggle}
+            className="md:hidden"
+          >
+            <MenuIcon />
+          </IconButton>
+          <Typography variant="h6" noWrap component="div">
+            출석 및 실적 관리 시스템
+          </Typography>
+        </Toolbar>
+      </MuiAppBar>
+
+      <MobileNav open={open} onClose={handleClose} role={role} onLogout={onLogout} />
+    </>
   );
 }
 

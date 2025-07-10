@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 👤 사용자 정보 - 본인만 읽기/쓰기 가능
+    // 👤 사용자 정보 (Users)
     match /Users/{userId} {
       // 본인은 본인 문서에만 접근 가능
       allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -12,13 +12,23 @@ service cloud.firestore {
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // 👥 회원 정보 (Members)
+    // 👥 전체 회원 관리 (대문자 Members)
     match /Members/{memberId} {
-      // admin은 모든 회원 읽기/쓰기 가능
+      // admin은 전체 회원 읽기/쓰기 가능
       allow read, write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
-
       // teacher는 본인 담당 세부사업에 해당하는 회원만 읽기 가능
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "teacher" &&
+        resource.data.subProgram in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.subPrograms;
+    }
+
+    // 👥 세부사업별 이용자 관리 (소문자 members)
+    match /members/{memberId} {
+      // admin은 전체 이용자 읽기/쓰기 가능
+      allow read, write: if request.auth != null &&
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+      // teacher는 본인 담당 세부사업에 해당하는 이용자만 읽기 가능
       allow read: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "teacher" &&
         resource.data.subProgram in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.subPrograms;
@@ -35,9 +45,14 @@ service cloud.firestore {
       // admin, teacher는 읽기 가능
       allow read: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role in ["admin", "teacher"];
-
       // admin만 쓰기 가능
       allow write: if request.auth != null &&
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // 🧑‍🏫 강사-세부사업 매핑 (TeacherSubProgramMap)
+    match /TeacherSubProgramMap/{docId} {
+      allow read, write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
@@ -47,7 +62,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // 🔒 그 외 문서는 모두 접근 금지
+    // 🔒 기타 모든 문서는 접근 금지
     match /{document=**} {
       allow read, write: if false;
     }

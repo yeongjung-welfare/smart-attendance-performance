@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "AttendanceRecords",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "`세부사업명`", "order": "DESCENDING" },
+        { "fieldPath": "`날짜`", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "Members",
       "queryScope": "COLLECTION",
       "fields": [
@@ -38,6 +46,42 @@
       "fields": [
         { "fieldPath": "year", "order": "ASCENDING" },
         { "fieldPath": "month", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "PerformanceSummary",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "`실적유형`", "order": "DESCENDING" },
+        { "fieldPath": "`세부사업명`", "order": "DESCENDING" },
+        { "fieldPath": "`날짜`", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "PerformanceSummary",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "`실적유형`", "order": "DESCENDING" },
+        { "fieldPath": "`기능`", "order": "DESCENDING" },
+        { "fieldPath": "`단위사업명`", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "PerformanceSummary",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "`실적유형`", "order": "DESCENDING" },
+        { "fieldPath": "`팀명`", "order": "DESCENDING" },
+        { "fieldPath": "`날짜`", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "TeamSubProgramMap",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "`세부사업명`", "order": "DESCENDING" },
+        { "fieldPath": "`팀명`", "order": "DESCENDING" },
+        { "fieldPath": "`기능`", "order": "DESCENDING" }
       ]
     },
     {

@@ -1,5 +1,3 @@
-// src/components/SubProgramMemberModal.jsx
-
 import React, { useMemo } from "react";
 import {
   Dialog,
@@ -16,28 +14,27 @@ import {
   Divider,
 } from "@mui/material";
 
-function SubProgramMemberModal({ open, onClose, subProgramName, members = [], userInfo }) {
+function SubProgramMemberModal({ open, onClose, 세부사업명, members = [], userInfo }) {
   const role = userInfo?.role;
   const allowedSubPrograms = userInfo?.subPrograms || [];
 
-  // ✅ 필터링 로직: 세부사업 기준 + 강사 권한인 경우 추가 필터
   const filteredMembers = useMemo(() => {
     return members.filter((m) => {
-      const matchesSubProgram = m.subProgram === subProgramName;
+      const matchesSubProgram = m.세부사업명 === 세부사업명;
       if (!matchesSubProgram) return false;
 
       if (role === "teacher") {
-        return allowedSubPrograms.includes(m.subProgram);
+        return allowedSubPrograms.includes(m.세부사업명);
       }
 
-      return true; // admin은 모두 허용
+      return true;
     });
-  }, [members, subProgramName, role, allowedSubPrograms]);
+  }, [members, 세부사업명, role, allowedSubPrograms]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
       <DialogTitle>
-        세부사업 참여자 목록: <strong>{subProgramName}</strong>
+        세부사업 참여자 목록: <strong>{세부사업명}</strong>
       </DialogTitle>
 
       <DialogContent dividers>
@@ -60,9 +57,7 @@ function SubProgramMemberModal({ open, onClose, subProgramName, members = [], us
                   <TableCell>연락처</TableCell>
                   <TableCell>생년월일</TableCell>
                   <TableCell>연령대</TableCell>
-                  <TableCell>거주지</TableCell>
                   <TableCell>소득구분</TableCell>
-                  <TableCell>장애유무</TableCell>
                   <TableCell>유료/무료</TableCell>
                   <TableCell>이용상태</TableCell>
                 </TableRow>
@@ -70,19 +65,17 @@ function SubProgramMemberModal({ open, onClose, subProgramName, members = [], us
               <TableBody>
                 {filteredMembers.map((member, idx) => (
                   <TableRow key={idx}>
-                    <TableCell>{member.team || "-"}</TableCell>
-                    <TableCell>{member.unitProgram || "-"}</TableCell>
-                    <TableCell>{member.subProgram || "-"}</TableCell>
-                    <TableCell>{member.name || "-"}</TableCell>
-                    <TableCell>{member.gender || "-"}</TableCell>
-                    <TableCell>{member.phone || "-"}</TableCell>
-                    <TableCell>{member.birthdate || "-"}</TableCell>
-                    <TableCell>{member.ageGroup || "-"}</TableCell>
-                    <TableCell>{member.address || "-"}</TableCell>
-                    <TableCell>{member.incomeType || "-"}</TableCell>
-                    <TableCell>{member.disability || "-"}</TableCell>
-                    <TableCell>{member.paidType || "-"}</TableCell>
-                    <TableCell>{member.status || "-"}</TableCell>
+                    <TableCell>{member.팀명 || "-"}</TableCell>
+                    <TableCell>{member.단위사업명 || "-"}</TableCell>
+                    <TableCell>{member.세부사업명 || "-"}</TableCell>
+                    <TableCell>{member.이용자명 || "-"}</TableCell>
+                    <TableCell>{member.성별 || "-"}</TableCell>
+                    <TableCell>{member.연락처 || "-"}</TableCell>
+                    <TableCell>{member.생년월일 || "-"}</TableCell>
+                    <TableCell>{member.연령대 || "-"}</TableCell>
+                    <TableCell>{member.소득구분 || "-"}</TableCell>
+                    <TableCell>{member.유료무료 || "-"}</TableCell>
+                    <TableCell>{member.이용상태 || "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

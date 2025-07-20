@@ -1,3 +1,4 @@
+// src/pages/PerformanceStatsPage.jsx (전체 수정본)
 import React, { useEffect, useState } from "react";
 import { fetchPerformanceStats } from "../services/performanceStatsAPI";
 import { getAllTeamSubProgramMaps } from "../services/teamSubProgramMapAPI";
@@ -15,6 +16,8 @@ import {
   Paper,
   Typography
 } from "@mui/material";
+import { useStats } from "../contexts/StatsContext";
+import { teamSubProgramMap } from "../data/teamSubProgramMap";
 
 const quarterOptions = [
   { value: "1", label: "1분기(1~3월)" },
@@ -23,43 +26,63 @@ const quarterOptions = [
   { value: "4", label: "4분기(10~12월)" }
 ];
 
+// ✅ 실적유형 옵션 추가
+const performanceTypeOptions = [
+  { value: "전체", label: "전체" },
+  { value: "개별", label: "개별실적" },
+  { value: "대량", label: "대량실적" }
+];
+
 function PerformanceStatsPage() {
+  const { stats, setStats, filters, setFilters } = useStats();
   const [teamMap, setTeamMap] = useState([]);
-  const [filters, setFilters] = useState({
-    function: "",
-    team: "",
-    unit: "",
-    subProgram: "",
-    months: [],
-    quarters: []
-  });
-  const [stats, setStats] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // 매핑 불러오기
   useEffect(() => {
     getAllTeamSubProgramMaps().then(setTeamMap);
   }, []);
 
-  // 고정 옵션 (기능/팀명)
-  const functionOptions = ["서비스제공기능", "지역조직화기능", "사례관리기능"];
-  const teamOptions = [
-    "서비스제공연계팀",
-    "사례관리팀",
-    "마을협력팀",
-    "운영지원팀",
-    "마을돌봄팀"
-  ];
+  // subProgram에서 teamName을 동적으로 매핑하는 함수
+  const getTeamName = (subProgram) => {
+    for (const [team, subPrograms] of Object.entries(teamSubProgramMap)) {
+      if (subPrograms.includes(subProgram)) return team;
+    }
+    return "미매칭 팀";
+  };
 
-  // 동적 옵션 (단위/세부사업명)
+  // 🔧 .trim() 보완 적용된 드롭다운 옵션 생성
+  const functionOptions = [...new Set(teamMap.map(m => m.functionType?.trim()).filter(Boolean))];
+  
+  const teamOptions = filters.function
+    ? [...new Set(
+        teamMap
+          .filter(m => m.functionType?.trim() === filters.function?.trim())
+          .map(m => m.teamName?.trim())
+      )]
+    : [...new Set(teamMap.map(m => m.teamName?.trim()))];
+
   const unitOptions = filters.team
-    ? [...new Set(teamMap.filter(m => m.teamName === filters.team && (!filters.function || m.functionType === filters.function)).map(m => m.mainProgramName))]
-    : [];
-  const subProgramOptions = filters.unit
-    ? [...new Set(teamMap.filter(m => m.mainProgramName === filters.unit && (!filters.team || m.teamName === filters.team)).map(m => m.subProgramName))]
+    ? [...new Set(
+        teamMap
+          .filter(m =>
+            m.teamName?.trim() === filters.team?.trim() &&
+            (!filters.function || m.functionType?.trim() === filters.function?.trim())
+          )
+          .map(m => m.mainProgramName?.trim())
+      )]
     : [];
 
-  // 월 옵션(YYYY-MM, 최근 24개월)
+  const subProgramOptions = filters.unit
+    ? [...new Set(
+        teamMap
+          .filter(m =>
+            m.mainProgramName?.trim() === filters.unit?.trim() &&
+            (!filters.team || m.teamName?.trim() === filters.team?.trim())
+          )
+          .map(m => m.subProgramName?.trim())
+      )]
+    : [];
+
   const now = new Date();
   const monthOptions = [];
   for (let i = 0; i < 24; i++) {
@@ -67,105 +90,132 @@ function PerformanceStatsPage() {
     monthOptions.push(d.toISOString().slice(0, 7));
   }
 
-  // 필터 변경
+  // 🔧 필터 변경 시 문자열은 trim() 처리
   const handleFilterChange = (key, value) => {
+    const trimmed = typeof value === "string" ? value.trim() : value;
     setFilters(prev => ({
       ...prev,
-      [key]: value,
+      [key]: trimmed,
       ...(key === "function" ? { team: "", unit: "", subProgram: "" } : {}),
       ...(key === "team" ? { unit: "", subProgram: "" } : {}),
       ...(key === "unit" ? { subProgram: "" } : {})
     }));
   };
 
-  // 조회
+  // 집계: 횟수(운영일수)는 프로그램+날짜별 1회로만 합산(출석자 수와 무관)
   const handleSearch = async () => {
     setLoading(true);
-    const data = await fetchPerformanceStats({
-      function: filters.function,
-      team: filters.team,
-      unit: filters.unit,
-      subProgram: filters.subProgram,
-      months: filters.months,
-      quarters: filters.quarters
-    });
+    const data = await fetchPerformanceStats(filters);
+    // 그대로 setStats에 넣어야 performanceType 손실 없음
     setStats(data);
     setLoading(false);
   };
 
+  useEffect(() => {
+    if (stats.length === 0) handleSearch();
+    // eslint-disable-next-line
+  }, [stats.length]);
+
   return (
-    <Paper className="p-4 max-w-screen-xl mx-auto">
-      <Typography variant="h5" gutterBottom>실적 통계/조회</Typography>
-      <div className="flex flex-wrap gap-2 mb-6">
-        <TextField
-          select
-          label="기능"
-          value={filters.function}
-          onChange={e => handleFilterChange("function", e.target.value)}
-          sx={{ minWidth: 120 }}
-        >
-          <MenuItem value="">전체</MenuItem>
-          {functionOptions.map(f => <MenuItem key={f} value={f}>{f}</MenuItem>)}
-        </TextField>
-        <TextField
-          select
-          label="팀명"
-          value={filters.team}
-          onChange={e => handleFilterChange("team", e.target.value)}
-          sx={{ minWidth: 120 }}
-        >
-          <MenuItem value="">전체</MenuItem>
-          {teamOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-        </TextField>
-        <TextField
-          select
-          label="단위사업명"
-          value={filters.unit}
-          onChange={e => handleFilterChange("unit", e.target.value)}
-          sx={{ minWidth: 120 }}
-          disabled={!filters.team}
-        >
-          <MenuItem value="">전체</MenuItem>
-          {unitOptions.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
-        </TextField>
-        <TextField
-          select
-          label="세부사업명"
-          value={filters.subProgram}
-          onChange={e => handleFilterChange("subProgram", e.target.value)}
-          sx={{ minWidth: 120 }}
-          disabled={!filters.unit}
-        >
-          <MenuItem value="">전체</MenuItem>
-          {subProgramOptions.map(sp => <MenuItem key={sp} value={sp}>{sp}</MenuItem>)}
-        </TextField>
+    <Paper sx={{ p: 3 }}>
+      <Typography variant="h5" sx={{ mb: 3 }}>
+        실적 통계/조회
+      </Typography>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+        <FormControl sx={{ minWidth: 120, background: "#fff" }}>
+          <InputLabel>기능</InputLabel>
+          <Select
+            value={filters.function || ""}
+            onChange={(e) => handleFilterChange("function", e.target.value)}
+          >
+            <MenuItem value="">전체</MenuItem>
+            {functionOptions.map(f => <MenuItem key={f} value={f}>{f}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        <FormControl sx={{ minWidth: 120, background: "#fff" }}>
+          <InputLabel>팀명</InputLabel>
+          <Select
+            value={filters.team || ""}
+            onChange={(e) => handleFilterChange("team", e.target.value)}
+          >
+            <MenuItem value="">전체</MenuItem>
+            {teamOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        <FormControl sx={{ minWidth: 120, background: "#fff" }}>
+          <InputLabel>단위사업명</InputLabel>
+          <Select
+            value={filters.unit || ""}
+            onChange={(e) => handleFilterChange("unit", e.target.value)}
+            disabled={!filters.team}
+          >
+            <MenuItem value="">전체</MenuItem>
+            {unitOptions.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        <FormControl sx={{ minWidth: 120, background: "#fff" }}>
+          <InputLabel>세부사업명</InputLabel>
+          <Select
+            value={filters.subProgram || ""}
+            onChange={(e) => handleFilterChange("subProgram", e.target.value)}
+            disabled={!filters.unit}
+          >
+            <MenuItem value="">전체</MenuItem>
+            {subProgramOptions.map(sp => <MenuItem key={sp} value={sp}>{sp}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        {/* ✅ 실적유형 필터 추가 */}
+        <FormControl sx={{ minWidth: 120, background: "#fff" }}>
+          <InputLabel>실적유형</InputLabel>
+          <Select
+            value={filters.performanceType || "전체"}
+            onChange={(e) => handleFilterChange("performanceType", e.target.value)}
+          >
+            {performanceTypeOptions.map(option => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
         <Autocomplete
           multiple
           options={monthOptions}
-          value={filters.months}
+          value={filters.months || []}
           onChange={(_, value) => handleFilterChange("months", value)}
           renderInput={params => (
-            <TextField {...params} label="월(복수선택)" sx={{ minWidth: 180 }} />
+            <TextField {...params} label="월별(다중)" sx={{ minWidth: 180 }} />
           )}
         />
-        <FormControl sx={{ minWidth: 120 }}>
+
+        <FormControl sx={{ minWidth: 120, background: "#fff" }}>
           <InputLabel>분기(다중)</InputLabel>
           <Select
             multiple
-            value={filters.quarters}
-            onChange={e => handleFilterChange("quarters", e.target.value)}
+            value={filters.quarters || []}
+            onChange={(e) => handleFilterChange("quarters", e.target.value)}
             renderValue={selected => selected.map(q => `${q}분기`).join(", ")}
           >
             {quarterOptions.map(opt => (
               <MenuItem key={opt.value} value={opt.value}>
-                <Checkbox checked={filters.quarters.indexOf(opt.value) > -1} />
+                <Checkbox checked={(filters.quarters || []).indexOf(opt.value) > -1} />
                 <ListItemText primary={opt.label} />
               </MenuItem>
             ))}
           </Select>
         </FormControl>
-        <Button variant="contained" onClick={handleSearch} disabled={loading}>조회</Button>
+
+        <Button variant="contained" onClick={handleSearch} disabled={loading}>
+          {loading ? "조회중..." : "조회"}
+        </Button>
       </div>
+
       <PerformanceStatsTable data={stats} loading={loading} />
     </Paper>
   );

@@ -1,4 +1,3 @@
-// ✅ pages/Dashboard.jsx
 import React, { useEffect, useState } from "react";
 import DashboardCard from "../components/DashboardCard";
 import AttendancePerformanceChart from "../components/AttendancePerformanceChart";
@@ -25,11 +24,9 @@ function Dashboard({ role }) {
   useEffect(() => {
     fetchProgramStructure()
       .then((data) => {
-        console.log("✅ 프로그램 구조 불러오기 성공:", data);
         setProgramStructure(data);
       })
       .catch((err) => {
-        console.error("❌ 프로그램 구조 호출 실패:", err.message);
         setProgramError(err.message);
       });
 
@@ -70,8 +67,8 @@ function Dashboard({ role }) {
   }, []);
 
   return (
-    <div className="p-8">
-      <h2 className="text-2xl font-bold mb-6">대시보드</h2>
+    <div className="p-2 sm:p-4 md:p-8 max-w-full bg-[#f7f9fa] min-h-screen">
+      <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">대시보드</h2>
 
       {programError && (
         <div className="bg-red-100 text-red-700 p-4 rounded mb-4">
@@ -79,7 +76,13 @@ function Dashboard({ role }) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-4 mb-8">
+      <div
+        className="flex flex-wrap gap-3 sm:gap-4 mb-8"
+        style={{
+          rowGap: "18px",
+          columnGap: "18px"
+        }}
+      >
         <DashboardCard title="전체 회원 수" value={stats.totalMembers} color="primary" />
         <DashboardCard title="오늘 출석" value={stats.todayAttendance} color="success" />
         <DashboardCard title="승인 대기자" value={stats.pendingUsers} color="warning" />
@@ -88,12 +91,16 @@ function Dashboard({ role }) {
         <DashboardCard title="인기 세부사업" value={stats.topSubProgram || "-"} color="error" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
         <ErrorBoundary>
-          <AttendancePerformanceChart mode="performance" data={performanceData} />
+          <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6 h-full min-h-[300px]">
+            <AttendancePerformanceChart mode="performance" data={performanceData} />
+          </div>
         </ErrorBoundary>
         <ErrorBoundary>
-          <AttendancePerformanceChart mode="attendance" data={attendanceData} />
+          <div className="bg-white rounded-xl shadow-sm p-3 sm:p-6 h-full min-h-[300px]">
+            <AttendancePerformanceChart mode="attendance" data={attendanceData} />
+          </div>
         </ErrorBoundary>
       </div>
     </div>

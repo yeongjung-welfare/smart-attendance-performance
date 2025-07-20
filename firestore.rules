@@ -4,65 +4,79 @@ service cloud.firestore {
 
     // 👤 사용자 정보 (Users)
     match /Users/{userId} {
-      // 본인은 본인 문서에만 접근 가능
+      // 본인 문서 접근 가능
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
-      // admin은 모든 사용자 정보 읽기/수정 가능
+      // 관리자(admin)는 모든 사용자 정보 접근 가능
       allow read, update: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // 👥 전체 회원 관리 (대문자 Members)
+    // 👥 전체 회원 정보 (대문자 Members)
     match /Members/{memberId} {
-      // admin은 전체 회원 읽기/쓰기 가능
+      // 관리자 전체 접근 가능
       allow read, write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
-      // teacher는 본인 담당 세부사업에 해당하는 회원만 읽기 가능
+
+      // 교사는 담당 세부사업만 읽기 가능
       allow read: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "teacher" &&
         resource.data.subProgram in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.subPrograms;
     }
 
     // 👥 세부사업별 이용자 관리 (소문자 members)
-    match /members/{memberId} {
-      // admin은 전체 이용자 읽기/쓰기 가능
-      allow read, write: if request.auth != null &&
-        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
-      // teacher는 본인 담당 세부사업에 해당하는 이용자만 읽기 가능
-      allow read: if request.auth != null &&
-        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "teacher" &&
-        resource.data.subProgram in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.subPrograms;
-    }
+    match /SubProgramUsers/{memberId} {
+  allow read, write: if request.auth != null &&
+    get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+  allow read: if request.auth != null &&
+    get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "teacher" &&
+    resource.data.subProgram in get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.subPrograms;
+}
 
-    // ✅ 출석 정보 (Attendance)
-    match /Attendance/{attendanceId} {
+    // ✅ 출석 기록 (AttendanceRecords)
+    match /AttendanceRecords/{recordId} {
+      // 관리자, 교사 모두 읽기/쓰기 가능
       allow read, write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role in ["admin", "teacher"];
     }
 
     // 📊 실적 요약 정보 (PerformanceSummary)
     match /PerformanceSummary/{summaryId} {
-      // admin, teacher는 읽기 가능
+      // 읽기: 관리자, 교사
       allow read: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role in ["admin", "teacher"];
-      // admin만 쓰기 가능
+
+      // 쓰기: 관리자만
       allow write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // 🧑‍🏫 강사-세부사업 매핑 (TeacherSubProgramMap)
+    // 📂 프로그램 구조 (ProgramStructure)
+    match /ProgramStructure/{docId} {
+      // 관리자: 읽기/쓰기
+      allow read, write: if request.auth != null &&
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+
+      // 교사: 읽기만 가능
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "teacher";
+    }
+
+    // 🧑‍🏫 강사-세부사업 매핑
     match /TeacherSubProgramMap/{docId} {
+      // 관리자만 접근
       allow read, write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // 🔁 팀-세부사업 매핑 (TeamSubProgramMap)
+    // 🔁 팀-세부사업 매핑
     match /TeamSubProgramMap/{docId} {
+      // 관리자만 접근
       allow read, write: if request.auth != null &&
         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // 🔒 기타 모든 문서는 접근 금지
+    // 🔒 기타 모든 문서: 접근 금지
     match /{document=**} {
       allow read, write: if false;
     }

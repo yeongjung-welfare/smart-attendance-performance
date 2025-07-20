@@ -8,10 +8,6 @@ import {
 } from "@mui/material";
 import { savePerformance } from "../services/attendancePerformanceAPI";
 
-/**
- * 실적 단건 등록 폼
- * - 날짜, 세부사업명(필수), 등록인원, 실인원, 연인원, 건수, 비고
- */
 function PerformanceSingleRegisterForm({ onSuccess, onClose }) {
   const [form, setForm] = useState({
     date: "",
@@ -66,7 +62,7 @@ function PerformanceSingleRegisterForm({ onSuccess, onClose }) {
   };
 
   return (
-    <Paper className="p-4 max-w-[600px] w-full mx-auto">
+    <Paper sx={{ p: 4, maxWidth: 600, width: "100%", mx: "auto" }}>
       <Typography variant="h6" gutterBottom>
         실적 단건 등록
       </Typography>

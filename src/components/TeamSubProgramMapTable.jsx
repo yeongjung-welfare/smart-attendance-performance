@@ -1,4 +1,3 @@
-// src/components/TeamSubProgramMapTable.jsx
 import React from "react";
 import { Button } from "@mui/material";
 
@@ -17,10 +16,10 @@ function TeamSubProgramMapTable({ mappings, onEdit, onDelete }) {
       <tbody>
         {mappings.map((item) => (
           <tr key={item.id}>
-            <td className="border px-2 py-1">{item.subProgramName}</td>
-            <td className="border px-2 py-1">{item.teamName}</td>
-            <td className="border px-2 py-1">{item.functionType}</td>
-            <td className="border px-2 py-1">{item.mainProgramName}</td>
+            <td className="border px-2 py-1">{item.subProgramName || "-"}</td>
+            <td className="border px-2 py-1">{item.teamName || "-"}</td>
+            <td className="border px-2 py-1">{item.functionType || "-"}</td>
+            <td className="border px-2 py-1">{item.mainProgramName || "-"}</td>
             <td className="border px-2 py-1 flex gap-2">
               <Button size="small" onClick={() => onEdit(item)}>수정</Button>
               <Button size="small" color="error" onClick={() => onDelete(item.id)}>삭제</Button>

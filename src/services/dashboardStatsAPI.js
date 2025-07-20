@@ -1,6 +1,6 @@
-// ✅ services/dashboardStatsAPI.js
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
+import { isPresent } from "../utils/attendanceUtils";
 
 // 전체 회원 수
 export async function getTotalMembers() {
@@ -11,9 +11,14 @@ export async function getTotalMembers() {
 // 오늘 출석 수
 export async function getTodayAttendance() {
   const today = new Date().toISOString().slice(0, 10);
-  const q = query(collection(db, "AttendanceRecords"), where("date", "==", today));
+  const q = query(collection(db, "AttendanceRecords"), where("날짜", "==", today));
   const snapshot = await getDocs(q);
-  return snapshot.size;
+  let count = 0;
+  snapshot.docs.forEach(doc => {
+    const d = doc.data();
+    if (isPresent(d.출석여부)) count++;
+  });
+  return count;
 }
 
 // 승인 대기자 수
@@ -43,7 +48,7 @@ export async function getTotalPrograms() {
   const set = new Set();
   snapshot.docs.forEach(doc => {
     const data = doc.data();
-    if (data.subProgramName) set.add(data.subProgramName);
+    if (data.세부사업명) set.add(data.세부사업명);
   });
   return set.size;
 }
@@ -54,44 +59,62 @@ export async function getTopSubProgram() {
   const counts = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data();
-    const sub = data.subProgram;
-    const total = Number(data.total) || 0;
-    counts[sub] = (counts[sub] || 0) + total;
+    // 대량/개별실적 구분 없이 연인원 누적
+    const sub = data.세부사업명;
+    const total = Number(data.연인원) || 0;
+    if (sub) counts[sub] = (counts[sub] || 0) + total;
   });
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   return sorted.length > 0 ? sorted[0][0] : "없음";
 }
 
-// 최근 월별 실적 (연인원 기준)
+// 최근 월별 실적 (연인원 기준, 기능/팀명/단위사업명도 반환)
 export async function getMonthlyPerformanceData(months = 5) {
   const q = collection(db, "PerformanceSummary");
   const snapshot = await getDocs(q);
+  // 월별, 기능, 팀명, 단위사업명, 세부사업명별 집계
   const map = new Map();
 
   snapshot.docs.forEach(doc => {
     const d = doc.data();
-    const month = d.date?.slice(0, 7);
+    const month = d.날짜?.slice(0, 7);
     if (!month) return;
-    const prev = map.get(month) || 0;
-    map.set(month, prev + (Number(d.total) || 0));
+    const key = [
+      d.function || "",
+      d.team || "",
+      d.unit || "",
+      d.세부사업명 || "",
+      month
+    ].join("|");
+    const prev = map.get(key) || { 연인원: 0, function: d.function, team: d.team, unit: d.unit, subProgram: d.세부사업명, month };
+    prev.연인원 += Number(d.연인원) || 0;
+    map.set(key, prev);
   });
 
-  return [...map.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-months)
-    .map(([date, 실적]) => ({ date, 실적 }));
+  // 최근 N개월 데이터만 반환
+  return [...map.values()]
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .slice(-months);
 }
 
-// 최근 7일 출석 통계
+// 최근 7일 출석 통계 (프로그램별+날짜별 1회만 집계)
 export async function getRecentAttendanceData(days = 7) {
   const q = collection(db, "AttendanceRecords");
   const snapshot = await getDocs(q);
+  // 프로그램별+날짜별 1회만 집계
   const map = new Map();
+  const sessionSet = new Set();
 
   snapshot.docs.forEach(doc => {
     const d = doc.data();
-    const date = d.date;
-    if (!date) return;
+    const date = d.날짜;
+    const subProgram = d.세부사업명 || "";
+    if (!date || !subProgram) return;
+    // 프로그램별+날짜별 1회만
+    const sessionKey = `${subProgram}_${date}`;
+    if (sessionSet.has(sessionKey)) return;
+    sessionSet.add(sessionKey);
+
     const prev = map.get(date) || 0;
     map.set(date, prev + 1);
   });
@@ -99,5 +122,5 @@ export async function getRecentAttendanceData(days = 7) {
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .slice(-days)
-    .map(([date, 출석]) => ({ date, 출석 }));
+    .map(([date, 횟수]) => ({ date, 횟수 }));
 }

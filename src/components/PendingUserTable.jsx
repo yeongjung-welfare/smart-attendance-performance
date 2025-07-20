@@ -27,9 +27,9 @@ function PendingUserTable({ users = [], status, onApprove, onReject, onCancel })
         ) : (
           users.map(user => (
             <TableRow key={user.id}>
-              <TableCell>{user.name || "-"}</TableCell>
-              <TableCell>{user.email}</TableCell>
-              <TableCell>{user.createdAt}</TableCell>
+              <TableCell>{user.name || (user.이용자명 ? user.이용자명 : "-")}</TableCell>
+              <TableCell>{user.email || "-"}</TableCell>
+              <TableCell>{user.createdAt || (user.업로드일 ? user.업로드일 : "-")}</TableCell>
               <TableCell align="center">
                 {status === "pending" ? (
                   <>
@@ -38,7 +38,7 @@ function PendingUserTable({ users = [], status, onApprove, onReject, onCancel })
                       color="primary"
                       size="small"
                       sx={{ mr: 1 }}
-                      onClick={() => onApprove(user.id, "admin")}
+                      onClick={() => onApprove(user.id, "admin", user.isNewMember || false)}
                     >
                       관리자 승인
                     </Button>
@@ -47,7 +47,7 @@ function PendingUserTable({ users = [], status, onApprove, onReject, onCancel })
                       color="secondary"
                       size="small"
                       sx={{ mr: 1 }}
-                      onClick={() => onApprove(user.id, "teacher")}
+                      onClick={() => onApprove(user.id, "teacher", user.isNewMember || false)}
                     >
                       강사 승인
                     </Button>

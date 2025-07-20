@@ -1,4 +1,3 @@
-// src/components/TeamSubProgramUploadForm.jsx
 import React from "react";
 import * as XLSX from "xlsx";
 import { addTeamSubProgramMap } from "../services/teamSubProgramMapAPI";
@@ -6,7 +5,10 @@ import { addTeamSubProgramMap } from "../services/teamSubProgramMapAPI";
 function TeamSubProgramUploadForm({ onUploadComplete }) {
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
-    if (!file) return;
+    if (!file) {
+      alert("파일이 선택되지 않았습니다.");
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -17,33 +19,52 @@ function TeamSubProgramUploadForm({ onUploadComplete }) {
 
       let successCount = 0;
       let failCount = 0;
+      const failedRows = []; // 실패한 행 기록
 
       for (const row of json) {
-        const 세부사업명 = row["세부사업명"]?.trim();
-        const 팀명 = row["팀명"]?.trim();
-        const 기능 = row["기능"]?.trim();
-        const 단위사업명 = row["단위사업명"]?.trim();
+        const 세부사업명 = row["세부사업명"]?.toString().trim();
+        const 팀명 = row["팀명"]?.toString().trim();
+        const 기능 = row["기능"]?.toString().trim();
+        const 단위사업명 = row["단위사업명"]?.toString().trim();
 
         if (세부사업명 && 팀명 && 기능 && 단위사업명) {
           try {
-            await addTeamSubProgramMap({
-              subProgramName: 세부사업명,
-              teamName: 팀명,
-              functionType: 기능,
-              mainProgramName: 단위사업명,
-            });
+            await addTeamSubProgramMap(
+              {
+                subProgramName: 세부사업명,
+                teamName: 팀명,
+                functionType: 기능,
+                mainProgramName: 단위사업명,
+              },
+              true // 중복 시 덮어쓰기
+            );
             successCount++;
           } catch (err) {
-            console.error("업로드 실패:", row, err);
+            console.error("업로드 실패 - 행 데이터:", row, "오류:", err.message);
             failCount++;
+            failedRows.push({ row, error: err.message });
           }
         } else {
+          console.error("필수 필드 누락 - 행 데이터:", row);
           failCount++;
+          failedRows.push({ row, error: "필수 필드 누락" });
         }
       }
 
-      alert(`업로드 완료: 성공 ${successCount}건 / 실패 ${failCount}건`);
-      onUploadComplete?.();
+      // 실패한 행 상세 알림
+      if (failCount > 0) {
+        let failDetails = failedRows
+          .map((item, index) => `${index + 1}: ${JSON.stringify(item.row)} - ${item.error}`)
+          .join("\n");
+        alert(
+          `업로드 완료: 성공 ${successCount}건 / 실패 ${failCount}건\n\n실패 상세:\n${
+            failDetails || "상세 오류 없음"
+          }`
+        );
+      } else {
+        alert(`업로드 완료: 성공 ${successCount}건 / 실패 ${failCount}건`);
+      }
+      if (onUploadComplete) onUploadComplete();
     };
 
     reader.readAsArrayBuffer(file);
@@ -64,10 +85,9 @@ function TeamSubProgramUploadForm({ onUploadComplete }) {
         <details className="mt-2">
           <summary className="cursor-pointer text-blue-600 underline">예시 보기</summary>
           <pre className="bg-gray-100 p-2 rounded text-xs whitespace-pre-wrap mt-2">
-팀명,기능
-서비스제공연계팀,서비스제공 기능
-마을돌봄팀,지역조직화 기능
-마을협력팀,지역조직화 기능
+세부사업명,팀명,기능,단위사업명
+이미용 서비스,마을돌봄팀,서비스제공 기능,일상생활지원
+경로식당,마을돌봄팀,서비스제공 기능,저소득 어르신 무료급식지원사업
           </pre>
         </details>
       </div>

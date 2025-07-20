@@ -31,12 +31,18 @@ export function exportToExcel({ data, fileName = "data", sheetName = "Sheet1" })
       type: "array"
     });
 
-    // 4. Blob 생성 후 다운로드
+    // ✅ 4. MIME 타입 명확히 지정
     const blob = new Blob([excelBuffer], {
-      type: "application/octet-stream"
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     });
 
-    saveAs(blob, `${fileName}.xlsx`);
+    // ✅ 5. 확장자 자동 보완
+    const correctedFileName = fileName.endsWith(".xlsx")
+      ? fileName
+      : `${fileName}.xlsx`;
+
+    // 6. 저장
+    saveAs(blob, correctedFileName);
   } catch (error) {
     console.error("엑셀 내보내기 오류:", error);
     alert("엑셀 내보내기 중 오류가 발생했습니다.");

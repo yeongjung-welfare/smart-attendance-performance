@@ -1,8 +1,7 @@
-// src/components/TeamSubProgramMapForm.jsx
 import React, { useState, useEffect } from "react";
 import { Autocomplete, TextField, Button } from "@mui/material";
 
-const functionOptions = ["서비스제공기능", "사례관리기능", "지역조직화기능"];
+const functionOptions = ["서비스제공 기능", "사례관리 기능", "지역조직화 기능"];
 const teamOptions = ["서비스제공연계팀", "마을협력팀", "마을돌봄팀", "사례관리팀", "운영지원팀"];
 
 function TeamSubProgramMapForm({ editing = null, onSave, onCancel }) {
@@ -13,10 +12,10 @@ function TeamSubProgramMapForm({ editing = null, onSave, onCancel }) {
 
   useEffect(() => {
     if (editing) {
-      setFunctionType(editing.functionType);
-      setTeam(editing.teamName);
-      setMainProgram(editing.mainProgramName);
-      setSubProgramText((editing.subPrograms || []).join(", "));
+      setFunctionType(editing.functionType || "");
+      setTeam(editing.teamName || "");
+      setMainProgram(editing.mainProgramName || "");
+      setSubProgramText((editing.subPrograms || []).join(", ") || "");
     } else {
       setFunctionType(""); setTeam(""); setMainProgram(""); setSubProgramText("");
     }
@@ -32,9 +31,11 @@ function TeamSubProgramMapForm({ editing = null, onSave, onCancel }) {
         functionType,
         teamName: team,
         mainProgramName: mainProgram,
-        subPrograms: cleanSubs,
+        subProgramName: cleanSubs[0], // 단일 세부사업명만 처리
       });
       setSubProgramText("");
+    } else {
+      alert("모든 필수 항목을 입력해주세요.");
     }
   };
 
@@ -43,25 +44,25 @@ function TeamSubProgramMapForm({ editing = null, onSave, onCancel }) {
       <Autocomplete
         options={functionOptions}
         value={functionType}
-        onChange={(_, v) => setFunctionType(v)}
+        onChange={(_, v) => setFunctionType(v || "")}
         renderInput={params => <TextField {...params} label="기능" required />}
       />
       <Autocomplete
         options={teamOptions}
         value={team}
-        onChange={(_, v) => setTeam(v)}
+        onChange={(_, v) => setTeam(v || "")}
         renderInput={params => <TextField {...params} label="팀명" required />}
       />
       <TextField
         label="단위사업명 (직접입력)"
         value={mainProgram}
-        onChange={(e) => setMainProgram(e.target.value)}
+        onChange={(e) => setMainProgram(e.target.value || "")}
         required
       />
       <TextField
         label="세부사업명 (쉼표로 구분)"
         value={subProgramText}
-        onChange={(e) => setSubProgramText(e.target.value)}
+        onChange={(e) => setSubProgramText(e.target.value || "")}
         required
       />
       <div className="col-span-2 flex gap-2">

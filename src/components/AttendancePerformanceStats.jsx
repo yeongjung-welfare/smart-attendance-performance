@@ -3,6 +3,7 @@ import { DataGrid } from "@mui/x-data-grid";
 import { TextField, MenuItem, Button } from "@mui/material";
 import AttendancePerformanceChart from "./AttendancePerformanceChart";
 import ExportButton from "./ExportButton";
+import { teamSubProgramMap } from "../data/teamSubProgramMap"; // 팀-세부사업 매핑 데이터 추가
 
 const functionOptions = ["서비스제공기능", "사례관리기능", "지역조직화기능"];
 const genderOptions = ["", "남", "여"];
@@ -25,10 +26,25 @@ function AttendancePerformanceStats({ mode, data, onFilter }) {
     paidType: "",
     ageGroup: "",
     protectionStatus: "",
-    month: ""
+    month: "",
+    userId: ""
   });
 
-  const filtered = data.filter(row =>
+  // subProgram에서 teamName을 동적으로 매핑하는 함수
+  const getTeamName = (subProgram) => {
+    for (const [team, subPrograms] of Object.entries(teamSubProgramMap)) {
+      if (subPrograms.includes(subProgram)) return team;
+    }
+    return "미매칭 팀"; // 매핑되지 않으면 기본값
+  };
+
+  // 데이터에 teamName을 동적으로 추가
+  const enrichedData = data.map(row => ({
+    ...row,
+    teamName: row.teamName || getTeamName(row.subProgram) // teamName이 없으면 매핑
+  }));
+
+  const filtered = enrichedData.filter(row =>
     (!filters.date || row.date === filters.date) &&
     (!filters.function || row.function === filters.function) &&
     (!filters.unit || row.unit === filters.unit) &&
@@ -38,41 +54,50 @@ function AttendancePerformanceStats({ mode, data, onFilter }) {
     (!filters.paidType || row.paidType === filters.paidType) &&
     (!filters.ageGroup || row.ageGroup === filters.ageGroup) &&
     (!filters.protectionStatus || row.protectionStatus === filters.protectionStatus) &&
-    (!filters.month || (row.date && row.date.startsWith(filters.month)))
+    (!filters.month || (row.date && row.date.startsWith(filters.month))) &&
+    (!filters.userId || row.userId === filters.userId)
   );
 
   useEffect(() => {
     if (onFilter) onFilter(filtered);
   }, [filtered, onFilter]);
 
+  // 실인원(고유아이디 기준 중복 없는 인원) 집계
+  const uniqueUserCount = new Set(filtered.map(r => r.userId)).size;
+  // 연인원(전체 건수)
+  const totalCount = filtered.length;
+  // 출석자 수(출석여부 true)
+  const attendedCount = filtered.filter(r => r.attended).length;
+
   const columns = mode === "attendance"
     ? [
+        { field: "userId", headerName: "고유아이디", width: 120 },
         { field: "date", headerName: "날짜", width: 110 },
-        { field: "function", headerName: "기능", width: 120 },
-        { field: "unit", headerName: "단위사업명", width: 130 },
+        { field: "function", headerName: "기능", width: 120 }, // 기능 추가
+        { field: "unit", headerName: "단위사업명", width: 130 }, // 단위사업명 추가
         { field: "subProgram", headerName: "세부사업명", width: 130 },
-        { field: "name", headerName: "이름", width: 100 },
+        { field: "name", headerName: "이용자명", width: 100 },
         { field: "gender", headerName: "성별", width: 80 },
-        { field: "attended", headerName: "출석", width: 80,
-          valueGetter: (params) => params.row.attended ? "O" : "X"
-        }
+        { field: "attended", headerName: "출석여부", width: 80,
+          valueGetter: (params) => params.row.attended ? "출석" : "결석"
+        },
+        { field: "teamName", headerName: "팀명", width: 120 } // 팀명 추가
       ]
     : [
+        { field: "userId", headerName: "고유아이디", width: 120 },
         { field: "date", headerName: "날짜", width: 110 },
-        { field: "function", headerName: "기능", width: 120 },
-        { field: "unit", headerName: "단위사업명", width: 130 },
+        { field: "function", headerName: "기능", width: 120 }, // 기능 추가
+        { field: "unit", headerName: "단위사업명", width: 130 }, // 단위사업명 추가
         { field: "subProgram", headerName: "세부사업명", width: 130 },
-        { field: "name", headerName: "이름", width: 100 },
+        { field: "name", headerName: "이용자명", width: 100 },
         { field: "gender", headerName: "성별", width: 80 },
         { field: "paidType", headerName: "유/무료", width: 80 },
         { field: "ageGroup", headerName: "연령대", width: 100 },
         { field: "protectionStatus", headerName: "보호구분", width: 110 },
-        { field: "result", headerName: "실적", width: 100 },
-        { field: "note", headerName: "특이사항", width: 120 }
+        { field: "result", headerName: "출석여부", width: 100 },
+        { field: "note", headerName: "내용(특이사항)", width: 120 },
+        { field: "teamName", headerName: "팀명", width: 120 } // 팀명 추가
       ];
-
-  const totalCount = filtered.length;
-  const attendedCount = filtered.filter(r => r.attended).length;
 
   return (
     <div>
@@ -109,10 +134,16 @@ function AttendancePerformanceStats({ mode, data, onFilter }) {
           onChange={e => setFilters(f => ({ ...f, subProgram: e.target.value }))}
         />
         <TextField
-          label="이름"
+          label="이용자명"
           size="small"
           value={filters.name}
           onChange={e => setFilters(f => ({ ...f, name: e.target.value }))}
+        />
+        <TextField
+          label="고유아이디"
+          size="small"
+          value={filters.userId}
+          onChange={e => setFilters(f => ({ ...f, userId: e.target.value }))}
         />
         {mode === "performance" && (
           <>
@@ -172,7 +203,7 @@ function AttendancePerformanceStats({ mode, data, onFilter }) {
         )}
         <Button onClick={() => setFilters({
           date: "", function: "", unit: "", subProgram: "", name: "",
-          gender: "", paidType: "", ageGroup: "", protectionStatus: "", month: ""
+          gender: "", paidType: "", ageGroup: "", protectionStatus: "", month: "", userId: ""
         })}>
           초기화
         </Button>
@@ -181,7 +212,36 @@ function AttendancePerformanceStats({ mode, data, onFilter }) {
       <AttendancePerformanceChart mode={mode} data={filtered} />
 
       <div className="my-2">
-        <ExportButton data={filtered} fileName={mode === "attendance" ? "출석통계.xlsx" : "실적통계.xlsx"} label="엑셀 다운로드" />
+        <ExportButton
+          data={filtered}
+          fileName={mode === "attendance" ? "출석통계.xlsx" : "실적통계.xlsx"}
+          label="엑셀 다운로드"
+          headers={mode === "attendance" ? [
+            ["고유아이디", "userId"],
+            ["날짜", "date"],
+            ["기능", "function"],
+            ["단위사업명", "unit"],
+            ["세부사업명", "subProgram"],
+            ["이용자명", "name"],
+            ["성별", "gender"],
+            ["출석여부", "attended", (v) => v ? "출석" : "결석"],
+            ["팀명", "teamName"]
+          ] : [
+            ["고유아이디", "userId"],
+            ["날짜", "date"],
+            ["기능", "function"],
+            ["단위사업명", "unit"],
+            ["세부사업명", "subProgram"],
+            ["이용자명", "name"],
+            ["성별", "gender"],
+            ["유/무료", "paidType"],
+            ["연령대", "ageGroup"],
+            ["보호구분", "protectionStatus"],
+            ["출석여부", "result"],
+            ["내용(특이사항)", "note"],
+            ["팀명", "teamName"]
+          ]}
+        />
       </div>
 
       <DataGrid
@@ -195,8 +255,8 @@ function AttendancePerformanceStats({ mode, data, onFilter }) {
 
       <div className="mt-4 font-bold">
         {mode === "attendance"
-          ? <>출석률: {totalCount > 0 ? Math.round(attendedCount / totalCount * 100) : 0}% (출석 {attendedCount} / 전체 {totalCount})</>
-          : <>실적 건수: {totalCount}건</>
+          ? <>실인원(중복 없는 인원): {uniqueUserCount}명 / 출석률: {totalCount > 0 ? Math.round(attendedCount / totalCount * 100) : 0}% (출석 {attendedCount} / 전체 {totalCount})</>
+          : <>실적 건수: {totalCount}건 / 실인원(중복 없는 인원): {uniqueUserCount}명</>
         }
       </div>
     </div>

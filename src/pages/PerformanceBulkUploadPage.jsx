@@ -890,14 +890,7 @@ function PerformanceBulkUploadPage() {
           <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
           홈
         </Link>
-        <Link 
-          underline="hover" 
-          sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-          onClick={() => navigate('/performance')}
-        >
-          <AssessmentIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-          실적 관리
-        </Link>
+        
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center' }}>
           <UploadIcon sx={{ mr: 0.5 }} fontSize="inherit" />
           대량 실적 업로드

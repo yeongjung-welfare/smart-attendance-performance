@@ -1,12 +1,13 @@
+/* src/index.css - 기존 Tailwind 설정 완전 보존하면서 색상 문제만 해결 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Noto Sans KR', system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  color-scheme: light;
+  color: #212121;
+  background-color: #fafafa;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,29 +16,38 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: #1976d2;
   text-decoration: inherit;
 }
+
 a:hover {
-  color: #535bf2;
+  color: #1565c0;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background-color: #fafafa;
+  color: #212121;
+}
+
+#root {
+  min-height: 100vh;
+  background-color: #fafafa;
 }
 
 @media (min-width: 320px) {
   body {
     display: flex;
     place-items: center;
-    min-width: 0; /* 최소 너비 제한 제거 */
+    min-width: 0;
   }
 }
 
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
+  color: #212121;
 }
 
 button {
@@ -47,32 +57,52 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: #1976d2;
+  color: #ffffff;
   cursor: pointer;
   transition: border-color 0.25s;
 }
+
 button:hover {
-  border-color: #646cff;
+  border-color: #1565c0;
+  background-color: #1565c0;
 }
+
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
+/* 모바일 최적화 */
+@media (max-width: 600px) {
+  body {
+    font-size: 16px;
   }
 }
 
-/* 반드시 맨 아래에 Tailwind 지시문 추가 */
+/* 고대비 모드 지원 */
+@media (prefers-contrast: high) {
+  :root {
+    color: #000000;
+    background-color: #ffffff;
+  }
+}
+
+/* 텍스트 선택 스타일 */
+::selection {
+  background-color: #1976d2;
+  color: #ffffff;
+}
+
+/* 포커스 스타일 */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #1976d2;
+  outline-offset: 2px;
+}
+
+/* 기존 Tailwind 지시문 완전 보존 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

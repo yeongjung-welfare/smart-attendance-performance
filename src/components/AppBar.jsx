@@ -1,12 +1,13 @@
+// src/components/AppBar.jsx 수정
 import React, { useState } from "react";
 import MenuIcon from "@mui/icons-material/Menu";
 import LogoutIcon from "@mui/icons-material/Logout";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
-import { 
-  AppBar as MuiAppBar, 
-  Toolbar, 
-  Typography, 
-  IconButton, 
+import {
+  AppBar as MuiAppBar,
+  Toolbar,
+  Typography,
+  IconButton,
   Button,
   Box,
   Menu,
@@ -21,7 +22,7 @@ function AppBar({ role, onLogout }) {
 
   const handleToggle = () => setMobileOpen((prev) => !prev);
   const handleClose = () => setMobileOpen(false);
-
+  
   const handleUserMenuOpen = (event) => {
     setUserMenuAnchor(event.currentTarget);
   };
@@ -37,7 +38,6 @@ function AppBar({ role, onLogout }) {
     }
   };
 
-  // ✅ 역할별 표시 텍스트
   const getRoleDisplay = (role) => {
     switch (role) {
       case "admin": return "관리자";
@@ -50,56 +50,83 @@ function AppBar({ role, onLogout }) {
 
   return (
     <>
-      <MuiAppBar position="static" sx={{ zIndex: 1201 }}>
+      <MuiAppBar 
+        position="static" 
+        sx={{ 
+          backgroundColor: '#1976d2',
+          color: '#ffffff'
+        }}
+      >
         <Toolbar>
-          {/* ✅ 모바일 메뉴 버튼 */}
+          {/* 모바일 메뉴 버튼 */}
           <IconButton
             color="inherit"
             aria-label="메뉴 열기"
             edge="start"
             onClick={handleToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+            sx={{ 
+              mr: 2, 
+              display: { sm: 'none' },
+              color: '#ffffff'
+            }}
           >
             <MenuIcon />
           </IconButton>
 
-          {/* ✅ 제목 */}
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          {/* 제목 */}
+          <Typography 
+            variant="h6" 
+            component="div" 
+            sx={{ 
+              flexGrow: 1,
+              color: '#ffffff',
+              fontWeight: 600
+            }}
+          >
             출석 및 실적 관리 시스템
           </Typography>
 
-          {/* ✅ 사용자 정보 및 로그아웃 */}
+          {/* 사용자 정보 및 로그아웃 */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Button
               color="inherit"
               startIcon={<AccountCircleIcon />}
               onClick={handleUserMenuOpen}
-              sx={{ mr: 1 }}
+              sx={{ 
+                mr: 1,
+                color: '#ffffff',
+                '&:hover': {
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                }
+              }}
             >
               {getRoleDisplay(role)}
             </Button>
-            
             <Menu
               anchorEl={userMenuAnchor}
               open={Boolean(userMenuAnchor)}
               onClose={handleUserMenuClose}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'right',
-              }}
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
+              PaperProps={{
+                sx: {
+                  backgroundColor: '#ffffff',
+                  color: '#212121'
+                }
               }}
             >
-              <MenuItem disabled>
-                <Typography variant="body2" color="text.secondary">
-                  현재 역할: {getRoleDisplay(role)}
-                </Typography>
+              <MenuItem disabled sx={{ color: '#757575' }}>
+                현재 역할: {getRoleDisplay(role)}
               </MenuItem>
               <Divider />
-              <MenuItem onClick={handleLogout}>
-                <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
+              <MenuItem 
+                onClick={handleLogout}
+                sx={{ 
+                  color: '#212121',
+                  '&:hover': {
+                    backgroundColor: '#f5f5f5'
+                  }
+                }}
+              >
+                <LogoutIcon sx={{ mr: 1 }} />
                 로그아웃
               </MenuItem>
             </Menu>
@@ -107,11 +134,12 @@ function AppBar({ role, onLogout }) {
         </Toolbar>
       </MuiAppBar>
 
-      {/* ✅ 모바일 네비게이션 */}
+      {/* 모바일 네비게이션 */}
       <MobileNav 
+        role={role} 
         open={mobileOpen} 
         onClose={handleClose} 
-        role={role} 
+        onLogout={onLogout} 
       />
     </>
   );

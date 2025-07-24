@@ -1,4 +1,5 @@
 // src/components/SubProgramMemberEditModal.jsx
+
 import React, { useState, useEffect } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -7,16 +8,14 @@ import {
 } from "@mui/material";
 import { updateSubProgramMember } from "../services/subProgramMemberAPI";
 import { useProgramStructure } from "../hooks/useProgramStructure";
+import { normalizeDate } from "../utils/dateUtils"; // ✅ toFirebaseDate 제거
 
 function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
   const [form, setForm] = useState(member || {});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  
-  // ✅ 프로그램 구조 데이터 가져오기
   const structure = useProgramStructure();
 
-  // ✅ 모든 세부사업명 추출 (드롭다운용)
   const allSubPrograms = React.useMemo(() => {
     const subPrograms = [];
     Object.keys(structure).forEach(team => {
@@ -65,6 +64,7 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
         단위사업명: ""
       });
     }
+    
     setError("");
     setLoading(false);
   }, [member, open]);
@@ -84,12 +84,16 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
     }
 
     setLoading(true);
-    
     try {
-      console.log("수정 데이터:", { id: form.id, data: form });
-      await updateSubProgramMember(form.id, form);
-      
-      if (onSave) onSave(form);
+      // ✅ 문자열로 정규화하여 저장 (Date 객체 제거)
+      const normalizedData = {
+        ...form,
+        생년월일: form.생년월일 ? normalizeDate(form.생년월일) : ""
+      };
+
+      console.log("수정 데이터:", { id: form.id, data: normalizedData });
+      await updateSubProgramMember(form.id, normalizedData);
+      if (onSave) onSave(normalizedData);
       onClose();
       setError("");
     } catch (err) {
@@ -101,20 +105,15 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="md" 
-      fullWidth
-      fullScreen={window.innerWidth < 600}
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>이용자 정보 수정</DialogTitle>
-      <form onSubmit={handleSubmit}>
-        <DialogContent>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        
+        <form onSubmit={handleSubmit}>
+          <Grid container spacing={2} sx={{ pt: 1 }}>
+            {/* 이용자명 */}
+            <Grid size={6}>
               <TextField
                 name="이용자명"
                 label="이용자명 *"
@@ -124,8 +123,9 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
                 required
               />
             </Grid>
-            
-            <Grid item xs={12} sm={6}>
+
+            {/* 연락처 */}
+            <Grid size={6}>
               <TextField
                 name="연락처"
                 label="연락처 *"
@@ -135,23 +135,24 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
                 required
               />
             </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>성별</InputLabel>
-                <Select
-                  name="성별"
-                  value={form.성별}
-                  onChange={handleChange}
-                  label="성별"
-                >
-                  <MenuItem value="남">남</MenuItem>
-                  <MenuItem value="여">여</MenuItem>
-                </Select>
-              </FormControl>
+
+            {/* 성별 */}
+            <Grid size={6}>
+              <TextField
+                name="성별"
+                label="성별"
+                value={form.성별}
+                onChange={handleChange}
+                fullWidth
+                select
+              >
+                <MenuItem value="남">남</MenuItem>
+                <MenuItem value="여">여</MenuItem>
+              </TextField>
             </Grid>
-            
-            <Grid item xs={12} sm={6}>
+
+            {/* 생년월일 */}
+            <Grid size={6}>
               <TextField
                 name="생년월일"
                 label="생년월일 *"
@@ -163,8 +164,9 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            
-            <Grid item xs={12} sm={6}>
+
+            {/* 연령대 */}
+            <Grid size={6}>
               <TextField
                 name="연령대"
                 label="연령대"
@@ -173,8 +175,81 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
                 fullWidth
               />
             </Grid>
-            
-            <Grid item xs={12}>
+
+            {/* 세부사업명 */}
+            <Grid size={6}>
+              <TextField
+                name="세부사업명"
+                label="세부사업명 *"
+                value={form.세부사업명}
+                onChange={handleChange}
+                fullWidth
+                select
+                required
+              >
+                {allSubPrograms.length > 0 ? (
+                  allSubPrograms.map((sp) => (
+                    <MenuItem key={sp} value={sp}>
+                      {sp}
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem value="">
+                    세부사업명 데이터를 불러오는 중...
+                  </MenuItem>
+                )}
+              </TextField>
+            </Grid>
+
+            {/* 소득구분 */}
+            <Grid size={6}>
+              <TextField
+                name="소득구분"
+                label="소득구분"
+                value={form.소득구분}
+                onChange={handleChange}
+                fullWidth
+                select
+              >
+                <MenuItem value="일반">일반</MenuItem>
+                <MenuItem value="기초수급">기초수급</MenuItem>
+                <MenuItem value="차상위">차상위</MenuItem>
+                <MenuItem value="국가유공자">국가유공자</MenuItem>
+              </TextField>
+            </Grid>
+
+            {/* 유료/무료 */}
+            <Grid size={6}>
+              <TextField
+                name="유료무료"
+                label="유료/무료"
+                value={form.유료무료}
+                onChange={handleChange}
+                fullWidth
+                select
+              >
+                <MenuItem value="무료">무료</MenuItem>
+                <MenuItem value="유료">유료</MenuItem>
+              </TextField>
+            </Grid>
+
+            {/* 이용상태 */}
+            <Grid size={6}>
+              <TextField
+                name="이용상태"
+                label="이용상태"
+                value={form.이용상태}
+                onChange={handleChange}
+                fullWidth
+                select
+              >
+                <MenuItem value="이용">이용</MenuItem>
+                <MenuItem value="종결">종결</MenuItem>
+              </TextField>
+            </Grid>
+
+            {/* 주소 */}
+            <Grid size={12}>
               <TextField
                 name="주소"
                 label="주소"
@@ -183,94 +258,20 @@ function SubProgramMemberEditModal({ open, onClose, member, onSave }) {
                 fullWidth
               />
             </Grid>
-            
-            {/* ✅ 개선된 세부사업명 드롭다운 */}
-            <Grid item xs={12}>
-              <FormControl fullWidth required>
-                <InputLabel>세부사업명 *</InputLabel>
-                <Select
-                  name="세부사업명"
-                  value={form.세부사업명}
-                  onChange={handleChange}
-                  label="세부사업명 *"
-                >
-                  {allSubPrograms.length > 0 ? (
-                    allSubPrograms.map((sp) => (
-                      <MenuItem key={sp} value={sp}>
-                        {sp}
-                      </MenuItem>
-                    ))
-                  ) : (
-                    <MenuItem value="" disabled>
-                      세부사업명 데이터를 불러오는 중...
-                    </MenuItem>
-                  )}
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>소득구분</InputLabel>
-                <Select
-                  name="소득구분"
-                  value={form.소득구분}
-                  onChange={handleChange}
-                  label="소득구분"
-                >
-                  <MenuItem value="일반">일반</MenuItem>
-                  <MenuItem value="기초수급">기초수급</MenuItem>
-                  <MenuItem value="차상위">차상위</MenuItem>
-                  <MenuItem value="국가유공자">국가유공자</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>유료/무료</InputLabel>
-                <Select
-                  name="유료무료"
-                  value={form.유료무료}
-                  onChange={handleChange}
-                  label="유료/무료"
-                >
-                  <MenuItem value="무료">무료</MenuItem>
-                  <MenuItem value="유료">유료</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>이용상태</InputLabel>
-                <Select
-                  name="이용상태"
-                  value={form.이용상태}
-                  onChange={handleChange}
-                  label="이용상태"
-                >
-                  <MenuItem value="이용">이용</MenuItem>
-                  <MenuItem value="종결">종결</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
           </Grid>
-        </DialogContent>
-        
-        <DialogActions>
-          <Button onClick={onClose} disabled={loading}>
-            취소
-          </Button>
-          <Button 
-            type="submit" 
-            variant="contained" 
-            disabled={loading}
-          >
-            {loading ? "저장 중..." : "저장"}
-          </Button>
-        </DialogActions>
-      </form>
+        </form>
+      </DialogContent>
+      
+      <DialogActions>
+        <Button onClick={onClose}>취소</Button>
+        <Button 
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={loading}
+        >
+          {loading ? "저장 중..." : "저장"}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

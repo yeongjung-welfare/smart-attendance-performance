@@ -6,6 +6,7 @@ import CheckBoxOutlineBlankIcon from "@mui/icons-material/CheckBoxOutlineBlank";
 import CheckBoxIcon from "@mui/icons-material/CheckBox";
 import SelectAllIcon from "@mui/icons-material/SelectAll";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
+import { normalizeDate, formatDateForDisplay } from "../utils/dateUtils";
 
 function SubProgramMemberTable({
   members = [],
@@ -22,11 +23,38 @@ function SubProgramMemberTable({
 }) {
   const isDeletableRole = role === "admin" || role === "manager";
   const isMobile = useMediaQuery("(max-width:600px)");
-
   const [paginationModel, setPaginationModel] = useState({
     page: 0,
     pageSize: 25,
   });
+
+  // ✅ 안전한 날짜 처리 함수
+  const safeDateFormat = (dateValue) => {
+    if (!dateValue) return "";
+    
+    try {
+      // Firebase Timestamp 객체 처리
+      if (dateValue && typeof dateValue.toDate === 'function') {
+        const jsDate = dateValue.toDate();
+        return formatDateForDisplay(jsDate);
+      }
+      
+      // Date 객체 처리
+      if (dateValue instanceof Date) {
+        return formatDateForDisplay(dateValue);
+      }
+      
+      // 문자열 처리
+      if (typeof dateValue === 'string') {
+        return normalizeDate(dateValue);
+      }
+      
+      return "";
+    } catch (error) {
+      console.warn("날짜 변환 오류:", error, dateValue);
+      return "";
+    }
+  };
 
   // 안전한 데이터 처리
   const rows = useMemo(() => {
@@ -37,7 +65,11 @@ function SubProgramMemberTable({
 
     return members.map((m, index) => ({
       ...m,
-      id: String(m.id || m.고유아이디 || `member-${index}`)
+      id: String(m.id || m.고유아이디 || `member-${index}`),
+      // ✅ 안전한 날짜 필드 처리
+      생년월일: safeDateFormat(m.생년월일),
+      registrationDate: safeDateFormat(m.registrationDate),
+      createdAt: safeDateFormat(m.createdAt)
     }));
   }, [members]);
 
@@ -45,13 +77,13 @@ function SubProgramMemberTable({
   const selectionStats = useMemo(() => {
     const totalRows = rows.length;
     // 실제 존재하는 ID만 카운트
-    const validSelectedIds = selectedIds.filter(id => 
+    const validSelectedIds = selectedIds.filter(id =>
       rows.some(row => String(row.id) === String(id))
     );
     const selectedCount = validSelectedIds.length;
     const isAllSelected = selectedCount === totalRows && totalRows > 0;
     const isPartialSelected = selectedCount > 0 && selectedCount < totalRows;
-    
+
     return {
       totalRows,
       selectedCount,
@@ -70,24 +102,22 @@ function SubProgramMemberTable({
       filterable: false,
       disableColumnMenu: true,
       renderHeader: () => (
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-          <Checkbox
-            checked={selectionStats.isAllSelected}
-            indeterminate={selectionStats.isPartialSelected}
-            onChange={(e) => {
-              const newChecked = e.target.checked;
-              onSelectAll?.(newChecked);
-            }}
-            disabled={!isDeletableRole || rows.length === 0}
-            size="small"
-            sx={{
-              color: selectionStats.isPartialSelected ? '#ff9800' : undefined,
-              '&.Mui-checked': {
-                color: '#1976d2'
-              }
-            }}
-          />
-        </Box>
+        <Checkbox
+          indeterminate={selectionStats.isPartialSelected}
+          checked={selectionStats.isAllSelected}
+          onChange={(e) => {
+            const newChecked = e.target.checked;
+            onSelectAll?.(newChecked);
+          }}
+          disabled={!isDeletableRole || rows.length === 0}
+          size="small"
+          sx={{
+            color: selectionStats.isPartialSelected ? '#ff9800' : undefined,
+            '&.Mui-checked': {
+              color: '#1976d2'
+            }
+          }}
+        />
       ),
       renderCell: (params) => (
         <Checkbox
@@ -115,12 +145,12 @@ function SubProgramMemberTable({
       renderCell: (params) => {
         const row = params.row;
         const deletable = isDeletableRole && (typeof canDelete === "function" ? canDelete(row) : true);
-
+        
         return (
-          <Box sx={{ display: "flex", gap: 1 }}>
+          <Box sx={{ display: "flex", gap: 0.5 }}>
             <Button
-              variant="outlined"
               size="small"
+              variant="outlined"
               onClick={() => onEdit?.(row)}
               sx={{ minWidth: 50, p: "2px 6px", fontSize: "0.75rem" }}
               disabled={!deletable || !onEdit}
@@ -128,9 +158,9 @@ function SubProgramMemberTable({
               수정
             </Button>
             <Button
+              size="small"
               variant="outlined"
               color="error"
-              size="small"
               onClick={() => onDelete?.(String(row.id))}
               sx={{ minWidth: 50, p: "2px 6px", fontSize: "0.75rem" }}
               disabled={!deletable || !onDelete}
@@ -158,16 +188,15 @@ function SubProgramMemberTable({
   // ✅ 완전히 개선된 모두선택/해제 토글 기능
   const handleSelectAllClick = () => {
     if (!Array.isArray(rows) || rows.length === 0) return;
-    
     const shouldSelectAll = !selectionStats.isAllSelected;
     onSelectAll?.(shouldSelectAll);
   };
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 200 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", p: 3 }}>
         <CircularProgress />
-        <Typography variant="body1" sx={{ ml: 2 }}>
+        <Typography variant="body2" sx={{ mt: 2 }}>
           이용자 목록을 불러오는 중...
         </Typography>
       </Box>
@@ -177,46 +206,64 @@ function SubProgramMemberTable({
   return (
     <Box>
       {/* ✅ 개선된 헤더 - 선택 상태 정확한 표시 */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h6">
-            📋 이용자 목록 ({rows.length}명)
-          </Typography>
-          {selectionStats.selectedCount > 0 && (
-            <Chip 
-              label={`${selectionStats.selectedCount}명 선택됨`}
-              color="primary"
-              size="small"
-            />
-          )}
-        </Box>
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+        📋 이용자 목록 ({rows.length}명)
+        {selectionStats.selectedCount > 0 && (
+          <Chip 
+            label={`${selectionStats.selectedCount}명 선택됨`} 
+            color="primary" 
+            size="small" 
+            sx={{ ml: 2 }} 
+          />
+        )}
+      </Typography>
 
-        {/* ✅ 모두 선택/해제 버튼 - 항상 표시되도록 수정 */}
-        {isDeletableRole && rows.length > 0 && (
+      {/* ✅ 모두 선택/해제 버튼 - 항상 표시되도록 수정 */}
+      {isDeletableRole && rows.length > 0 && (
+        <Box sx={{ mb: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
           <Button
             variant={selectionStats.selectedCount > 0 ? "contained" : "outlined"}
             color={selectionStats.isAllSelected ? "secondary" : "primary"}
             onClick={handleSelectAllClick}
             startIcon={
               selectionStats.isAllSelected ? <ClearAllIcon /> : 
-              selectionStats.isPartialSelected ? <CheckBoxIcon /> : 
-              <SelectAllIcon />
+              selectionStats.isPartialSelected ? <SelectAllIcon /> : 
+              <CheckBoxOutlineBlankIcon />
             }
-            sx={{ 
+            sx={{
               minWidth: 150,
               fontWeight: 600,
               transition: 'all 0.2s ease'
             }}
           >
-            {selectionStats.isAllSelected 
-              ? "모두 해제" 
-              : selectionStats.isPartialSelected 
-                ? `모두 선택 (${selectionStats.selectedCount}/${selectionStats.totalRows})`
-                : "모두 선택"
+            {selectionStats.isAllSelected
+              ? "모두 해제"
+              : selectionStats.isPartialSelected
+              ? `모두 선택 (${selectionStats.selectedCount}/${selectionStats.totalRows})`
+              : "모두 선택"
             }
           </Button>
-        )}
-      </Box>
+
+          {/* ✅ 개선된 액션 버튼들 - 선택 상태에 따른 활성화 */}
+          <Button
+            variant="outlined"
+            onClick={() => onBulkEdit?.(selectedIds)}
+            disabled={selectedIds.length === 0}
+            sx={{ minWidth: 140, fontWeight: 600 }}
+          >
+            선택 수정 ({selectionStats.selectedCount}명)
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={() => onBulkDelete?.(selectedIds)}
+            disabled={selectedIds.length === 0}
+            sx={{ minWidth: 140, fontWeight: 600 }}
+          >
+            선택 삭제 ({selectionStats.selectedCount}명)
+          </Button>
+        </Box>
+      )}
 
       {/* DataGrid - rowSelectionModel 완전 제거 */}
       <DataGrid
@@ -238,8 +285,10 @@ function SubProgramMemberTable({
         hideFooter={rows.length === 0}
         slots={{
           noRowsOverlay: () => (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <Typography>이용자 데이터가 없습니다.</Typography>
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
+              <Typography variant="body2" color="text.secondary">
+                이용자 데이터가 없습니다.
+              </Typography>
             </Box>
           ),
         }}
@@ -259,37 +308,13 @@ function SubProgramMemberTable({
         }}
       />
 
-      {/* ✅ 개선된 액션 버튼들 - 선택 상태에 따른 활성화 */}
-      {isDeletableRole && (
-        <Box sx={{ display: "flex", gap: 2, mt: 2, flexWrap: "wrap", alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => onBulkEdit?.(selectedIds)}
-            disabled={selectedIds.length === 0}
-            sx={{ minWidth: 140, fontWeight: 600 }}
-          >
-            선택 수정 ({selectionStats.selectedCount}명)
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={() => onBulkDelete?.(selectedIds)}
-            disabled={selectedIds.length === 0}
-            sx={{ minWidth: 140, fontWeight: 600 }}
-          >
-            선택 삭제 ({selectionStats.selectedCount}명)
-          </Button>
-
-          {/* 선택 상태 요약 정보 */}
-          {selectionStats.selectedCount > 0 && (
-            <Typography variant="body2" color="textSecondary">
-              전체 {selectionStats.totalRows}명 중 {selectionStats.selectedCount}명 선택
-              {selectionStats.isAllSelected && " (전체 선택됨)"}
-              {selectionStats.isPartialSelected && " (부분 선택됨)"}
-            </Typography>
-          )}
-        </Box>
+      {/* 선택 상태 요약 정보 */}
+      {selectionStats.selectedCount > 0 && (
+        <Typography variant="body2" sx={{ mt: 2, color: "text.secondary", textAlign: "center" }}>
+          전체 {selectionStats.totalRows}명 중 {selectionStats.selectedCount}명 선택
+          {selectionStats.isAllSelected && " (전체 선택됨)"}
+          {selectionStats.isPartialSelected && " (부분 선택됨)"}
+        </Typography>
       )}
     </Box>
   );

@@ -29,6 +29,7 @@ import MemberRegisterForm from "../components/MemberRegisterForm";
 import MemberUploadForm from "../components/MemberUploadForm";
 import MemberTable from "../components/MemberTable";
 import useSnackbar from "../components/useSnackbar";
+import { getAgeGroup } from "../utils/ageGroup";  // ✅ 추가
 import {
   getAllMembers,
   registerMember,
@@ -46,7 +47,7 @@ function MemberManage() {
   const [showRegister, setShowRegister] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [SnackbarComp, showSnackbar] = useSnackbar();
-  
+
   // ✅ 검색 및 필터 상태
   const [searchTerm, setSearchTerm] = useState("");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -58,6 +59,17 @@ function MemberManage() {
     district: ""
   });
   const [loading, setLoading] = useState(false);
+
+const getAgeGroupFromBirthdate = (birthdate) => {
+  if (!birthdate) return "";
+  
+  try {
+    const birthYear = birthdate.substring(0, 4);
+    return getAgeGroup(birthYear);
+  } catch (e) {
+    return "";
+  }
+};
 
   useEffect(() => {
     loadMembers();
@@ -83,35 +95,23 @@ function MemberManage() {
     if (filters.gender) {
       result = result.filter(member => member.gender === filters.gender);
     }
-    if (filters.ageGroup) {
-      result = result.filter(member => {
-        const birth = member.birthdate;
-        if (!birth) return false;
-        
-        try {
-          const birthDate = new Date(birth);
-          if (isNaN(birthDate)) return false;
-          
-          const today = new Date();
-          let age = today.getFullYear() - birthDate.getFullYear();
-          const m = today.getMonth() - birthDate.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-          }
 
-          const ageGroup = getAgeGroupFromAge(age);
-          return ageGroup === filters.ageGroup;
-        } catch (e) {
-          return false;
-        }
-      });
-    }
+    if (filters.ageGroup) {
+  result = result.filter(member => {
+    if (!member.birthdate) return false;
+    const calculatedAgeGroup = getAgeGroupFromBirthdate(member.birthdate);
+    return calculatedAgeGroup === filters.ageGroup;
+  });
+}
+
     if (filters.incomeType) {
       result = result.filter(member => member.incomeType === filters.incomeType);
     }
+
     if (filters.disability) {
       result = result.filter(member => member.disability === filters.disability);
     }
+
     if (filters.district) {
       result = result.filter(member =>
         member.district && member.district.includes(filters.district)
@@ -124,18 +124,6 @@ function MemberManage() {
   useEffect(() => {
     setFilteredMembers(filteredAndSearchedMembers);
   }, [filteredAndSearchedMembers]);
-
-  // ✅ 연령대 계산 함수
-  const getAgeGroupFromAge = (age) => {
-    if (age < 10) return "0~9세";
-    if (age < 20) return "10대";
-    if (age < 30) return "20대";
-    if (age < 40) return "30대";
-    if (age < 50) return "40대";
-    if (age < 60) return "50대";
-    if (age < 70) return "60대";
-    return "70세 이상";
-  };
 
   const loadMembers = async () => {
     try {
@@ -190,7 +178,6 @@ function MemberManage() {
   // ✅ 등록 또는 수정 처리 (onRegister 통합)
   const handleRegister = async (member) => {
     const isEdit = !!selectedMember;
-    
     try {
       if (isEdit) {
         console.log("✅ 회원 수정 진행:", selectedMember.id, member);
@@ -214,7 +201,6 @@ function MemberManage() {
           }
         }
       }
-      
       await loadMembers();
       setShowRegister(false);
       setSelectedMember(null);
@@ -227,7 +213,6 @@ function MemberManage() {
   // ✅ 완전히 수정된 handleEdit 함수
   const handleEdit = (member) => {
     console.log("✅ 수정할 회원 데이터:", member);
-    
     // ✅ 모든 필드를 완전하게 매핑하여 전달
     setSelectedMember({
       id: member.id,
@@ -248,6 +233,7 @@ function MemberManage() {
     setShowRegister(true);
   };
 
+  // ✅ 수정된 삭제 함수 - MemberTable의 onDelete prop과 일치
   const handleDelete = async (ids) => {
     const idList = Array.isArray(ids)
       ? ids
@@ -257,7 +243,6 @@ function MemberManage() {
       : [ids].filter(id => typeof id === "string" && id.length > 0);
 
     console.log("삭제 요청 ID:", idList);
-
     if (!window.confirm(`정말 ${idList.length}명을 삭제하시겠습니까?`)) return;
 
     try {
@@ -280,19 +265,19 @@ function MemberManage() {
   return (
     <Box sx={{ p: 3 }}>
       {SnackbarComp}
-      
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, color: "#333" }}>
+
+      <Typography variant="h4" sx={{ mb: 3, fontWeight: 700 }}>
         전체 회원 관리
       </Typography>
 
       {/* ✅ 검색 및 필터 섹션 */}
-      <Paper elevation={2} sx={{ p: 3, mb: 3, backgroundColor: "#f8f9fa" }}>
-        <Grid container spacing={2} alignItems="center">
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Grid container spacing={2}>
           {/* 통합 검색창 */}
           <Grid item xs={12} md={6}>
             <TextField
               fullWidth
-              placeholder="이름, 연락처, 고유아이디, 주소로 검색..."
+              placeholder="이름, 연락처, 주소로 검색..."
               value={searchTerm}
               onChange={handleSearchChange}
               InputProps={{
@@ -303,7 +288,7 @@ function MemberManage() {
                 ),
                 endAdornment: searchTerm && (
                   <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearchTerm("")}>
+                    <IconButton onClick={() => setSearchTerm("")}>
                       <ClearIcon />
                     </IconButton>
                   </InputAdornment>
@@ -314,12 +299,12 @@ function MemberManage() {
           </Grid>
 
           {/* 고급 필터 토글 버튼 */}
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} sm={6} md={3}>
             <Button
               variant="outlined"
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               startIcon={<FilterListIcon />}
               endIcon={showAdvancedFilters ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               fullWidth
             >
               고급 필터 {activeFiltersCount > 0 && `(${activeFiltersCount})`}
@@ -327,13 +312,13 @@ function MemberManage() {
           </Grid>
 
           {/* 필터 초기화 버튼 */}
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} sm={6} md={3}>
             <Button
               variant="outlined"
+              startIcon={<ClearIcon />}
               onClick={handleClearFilters}
               disabled={activeFiltersCount === 0}
               fullWidth
-              color="secondary"
             >
               필터 초기화
             </Button>
@@ -342,15 +327,15 @@ function MemberManage() {
 
         {/* ✅ 고급 필터 섹션 */}
         <Collapse in={showAdvancedFilters}>
-          <Box sx={{ mt: 3, pt: 3, borderTop: 1, borderColor: "divider" }}>
+          <Box sx={{ mt: 3 }}>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6} md={2}>
-                <FormControl fullWidth size="small">
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth>
                   <InputLabel>성별</InputLabel>
                   <Select
                     value={filters.gender}
-                    onChange={handleFilterChange("gender")}
                     label="성별"
+                    onChange={handleFilterChange('gender')}
                   >
                     <MenuItem value="">전체</MenuItem>
                     <MenuItem value="남">남</MenuItem>
@@ -359,51 +344,51 @@ function MemberManage() {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12} sm={6} md={2}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>연령대</InputLabel>
-                  <Select
-                    value={filters.ageGroup}
-                    onChange={handleFilterChange("ageGroup")}
-                    label="연령대"
-                  >
-                    <MenuItem value="">전체</MenuItem>
-                    <MenuItem value="0~9세">0~9세</MenuItem>
-                    <MenuItem value="10대">10대</MenuItem>
-                    <MenuItem value="20대">20대</MenuItem>
-                    <MenuItem value="30대">30대</MenuItem>
-                    <MenuItem value="40대">40대</MenuItem>
-                    <MenuItem value="50대">50대</MenuItem>
-                    <MenuItem value="60대">60대</MenuItem>
-                    <MenuItem value="70세 이상">70세 이상</MenuItem>
-                  </Select>
-                </FormControl>
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth>
+  <InputLabel>연령대</InputLabel>
+  <Select
+    value={filters.ageGroup}
+    label="연령대"
+    onChange={handleFilterChange('ageGroup')}
+  >
+    <MenuItem value="">전체</MenuItem>
+    <MenuItem value="0~7세(영유아)">0~7세(영유아)</MenuItem>
+    <MenuItem value="10대">10대</MenuItem>
+    <MenuItem value="20대">20대</MenuItem>
+    <MenuItem value="30대">30대</MenuItem>
+    <MenuItem value="40대">40대</MenuItem>
+    <MenuItem value="50대">50대</MenuItem>
+    <MenuItem value="60대">60대</MenuItem>
+    <MenuItem value="70대 이상">70대 이상</MenuItem>
+  </Select>
+</FormControl>
               </Grid>
 
-              <Grid item xs={12} sm={6} md={2}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>소득구분</InputLabel>
-                  <Select
-                    value={filters.incomeType}
-                    onChange={handleFilterChange("incomeType")}
-                    label="소득구분"
-                  >
-                    <MenuItem value="">전체</MenuItem>
-                    <MenuItem value="일반">일반</MenuItem>
-                    <MenuItem value="기초수급">기초수급</MenuItem>
-                    <MenuItem value="차상위">차상위</MenuItem>
-                    <MenuItem value="국가유공자">국가유공자</MenuItem>
-                  </Select>
-                </FormControl>
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth>
+  <InputLabel>소득구분</InputLabel>
+  <Select
+    value={filters.incomeType}
+    label="소득구분"
+    onChange={handleFilterChange('incomeType')}
+  >
+    <MenuItem value="">전체</MenuItem>
+    <MenuItem value="일반">일반</MenuItem>
+    <MenuItem value="기초생활수급자">기초생활수급자</MenuItem>
+    <MenuItem value="차상위계층">차상위계층</MenuItem>
+    <MenuItem value="국가유공자">국가유공자</MenuItem>
+  </Select>
+</FormControl>
               </Grid>
 
-              <Grid item xs={12} sm={6} md={2}>
-                <FormControl fullWidth size="small">
+              <Grid item xs={12} sm={6} md={3}>
+                <FormControl fullWidth>
                   <InputLabel>장애유무</InputLabel>
                   <Select
                     value={filters.disability}
-                    onChange={handleFilterChange("disability")}
                     label="장애유무"
+                    onChange={handleFilterChange('disability')}
                   >
                     <MenuItem value="">전체</MenuItem>
                     <MenuItem value="무">무</MenuItem>
@@ -412,10 +397,9 @@ function MemberManage() {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12} sm={6} md={4}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  size="small"
                   label="행정동"
                   value={filters.district}
                   onChange={(e) => setFilters(prev => ({ ...prev, district: e.target.value }))}
@@ -423,71 +407,71 @@ function MemberManage() {
                 />
               </Grid>
             </Grid>
-
-            {/* ✅ 활성 필터 표시 */}
-            {activeFiltersCount > 0 && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  활성 필터:
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  {searchTerm.trim() && (
-                    <Chip
-                      label={`검색: "${searchTerm}"`}
-                      onDelete={() => setSearchTerm("")}
-                      size="small"
-                      color="primary"
-                    />
-                  )}
-                  {filters.gender && (
-                    <Chip
-                      label={`성별: ${filters.gender}`}
-                      onDelete={() => setFilters(prev => ({ ...prev, gender: "" }))}
-                      size="small"
-                    />
-                  )}
-                  {filters.ageGroup && (
-                    <Chip
-                      label={`연령대: ${filters.ageGroup}`}
-                      onDelete={() => setFilters(prev => ({ ...prev, ageGroup: "" }))}
-                      size="small"
-                    />
-                  )}
-                  {filters.incomeType && (
-                    <Chip
-                      label={`소득구분: ${filters.incomeType}`}
-                      onDelete={() => setFilters(prev => ({ ...prev, incomeType: "" }))}
-                      size="small"
-                    />
-                  )}
-                  {filters.disability && (
-                    <Chip
-                      label={`장애유무: ${filters.disability}`}
-                      onDelete={() => setFilters(prev => ({ ...prev, disability: "" }))}
-                      size="small"
-                    />
-                  )}
-                  {filters.district && (
-                    <Chip
-                      label={`행정동: ${filters.district}`}
-                      onDelete={() => setFilters(prev => ({ ...prev, district: "" }))}
-                      size="small"
-                    />
-                  )}
-                </Stack>
-              </Box>
-            )}
           </Box>
         </Collapse>
-      </Paper>
 
-      {/* ✅ 검색 결과 요약 */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="body1" color="text.secondary">
-          전체 {members.length}명 중 {filteredMembers.length}명 표시
-          {activeFiltersCount > 0 && ` (필터 ${activeFiltersCount}개 적용)`}
-        </Typography>
-      </Box>
+        {/* ✅ 활성 필터 표시 */}
+        {activeFiltersCount > 0 && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              활성 필터:
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {searchTerm.trim() && (
+                <Chip
+                  label={`검색: ${searchTerm}`}
+                  onDelete={() => setSearchTerm("")}
+                  size="small"
+                  color="primary"
+                />
+              )}
+              {filters.gender && (
+                <Chip
+                  label={`성별: ${filters.gender}`}
+                  onDelete={() => setFilters(prev => ({ ...prev, gender: "" }))}
+                  size="small"
+                />
+              )}
+              {filters.ageGroup && (
+                <Chip
+                  label={`연령대: ${filters.ageGroup}`}
+                  onDelete={() => setFilters(prev => ({ ...prev, ageGroup: "" }))}
+                  size="small"
+                />
+              )}
+              {filters.incomeType && (
+                <Chip
+                  label={`소득구분: ${filters.incomeType}`}
+                  onDelete={() => setFilters(prev => ({ ...prev, incomeType: "" }))}
+                  size="small"
+                />
+              )}
+              {filters.disability && (
+                <Chip
+                  label={`장애유무: ${filters.disability}`}
+                  onDelete={() => setFilters(prev => ({ ...prev, disability: "" }))}
+                  size="small"
+                />
+              )}
+              {filters.district && (
+                <Chip
+                  label={`행정동: ${filters.district}`}
+                  onDelete={() => setFilters(prev => ({ ...prev, district: "" }))}
+                  size="small"
+                />
+              )}
+            </Stack>
+          </Box>
+        )}
+
+        {/* ✅ 검색 결과 요약 */}
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            전체 {members.length}명 중 {filteredMembers.length}명 표시
+            {activeFiltersCount > 0 && ` (필터 ${activeFiltersCount}개 적용)`}
+          </Typography>
+        </Box>
+      </Paper>
 
       {/* 액션 버튼 */}
       <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
@@ -497,24 +481,26 @@ function MemberManage() {
             setSelectedMember(null);
             setShowRegister(true);
           }}
+          size="large"
         >
           회원 등록
         </Button>
         <Button
           variant="outlined"
           onClick={() => setShowUpload(true)}
+          size="large"
         >
           대량 회원 업로드
         </Button>
       </Stack>
 
-      {/* ✅ 개선된 테이블 (필터링된 데이터 전달) */}
+      {/* ✅ 개선된 테이블 (필터링된 데이터 전달) - props 일치 */}
       <MemberTable
         members={filteredMembers}
         onEdit={handleEdit}
-        onDeleteMultiple={handleDelete}
+        onDelete={handleDelete}
         loading={loading}
-        searchTerm={searchTerm} // 검색어 하이라이팅용
+        searchTerm={searchTerm}
       />
 
       {/* ✅ 회원 등록/수정 다이얼로그 - prop 이름 수정 */}
@@ -547,8 +533,8 @@ function MemberManage() {
         </DialogTitle>
         <DialogContent>
           <MemberRegisterForm
-            initialData={selectedMember} // ✅ member → initialData로 수정
-            onRegister={handleRegister}  // ✅ 통합된 핸들러 사용
+            onRegister={handleRegister}
+            initialData={selectedMember}
           />
         </DialogContent>
       </Dialog>

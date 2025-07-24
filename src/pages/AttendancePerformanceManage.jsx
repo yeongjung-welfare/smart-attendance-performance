@@ -64,42 +64,49 @@ function AttendancePerformanceManage() {
     return "미매칭 팀";
   };
 
-  useEffect(() => {
-    async function fetchSubPrograms() {
-      setLoading(true);
-      setError("");
-      try {
-        if (userRole === "teacher" && user?.email) {
-          const mySubs = await getTeacherSubPrograms(user.email);
-          setSubProgramOptions(mySubs || []);
-        } else {
-          const teamMaps = await getAllTeamSubProgramMaps();
-          const allMembers = await getSubProgramMembers({});
-          const allSubs = Array.from(new Set([
-            ...allMembers.map(m => m.세부사업명).filter(Boolean),
-            ...teamMaps.map(m => m.subProgramName)
-          ]));
-          setSubProgramOptions(allSubs);
-          setAllSubPrograms(allSubs);
-          
-          const allFunctions = Array.from(new Set([
-            ...allMembers.map(m => m["기능"]).filter(Boolean),
-            ...teamMaps.map(m => m.functionType)
-          ]));
-          const allUnits = Array.from(new Set([
-            ...allMembers.map(m => m["단위사업명"]).filter(Boolean),
-            ...teamMaps.map(m => m.mainProgramName)
-          ]));
-          setFunctionOptions(allFunctions);
-          setUnitOptions(allUnits);
-        }
-      } catch (e) {
-        setError("세부사업명/필터 옵션 불러오기 실패");
+  // ✅ 38-55행을 다음으로 수정
+useEffect(() => {
+  async function fetchSubPrograms() {
+    setLoading(true);
+    setError("");
+    try {
+      if (userRole === "teacher" && user?.email) {
+        // ✅ 강사용 세부사업 조회 개선
+        const mySubs = await getTeacherSubPrograms(user.email);
+        const subProgramNames = mySubs.map(sub => sub.subProgramName || sub);
+        setSubProgramOptions(subProgramNames);
+        console.log("✅ 강사 담당 세부사업:", subProgramNames);
+      } else {
+        // ✅ 기존 관리자 로직 완전 유지
+        const teamMaps = await getAllTeamSubProgramMaps();
+        const allMembers = await getSubProgramMembers({});
+        const allSubs = Array.from(new Set([
+          ...allMembers.map(m => m.세부사업명).filter(Boolean),
+          ...teamMaps.map(m => m.subProgramName)
+        ]));
+        setSubProgramOptions(allSubs);
+        setAllSubPrograms(allSubs);
+
+        const allFunctions = Array.from(new Set([
+          ...allMembers.map(m => m["기능"]).filter(Boolean),
+          ...teamMaps.map(m => m.functionType)
+        ]));
+        const allUnits = Array.from(new Set([
+          ...allMembers.map(m => m["단위사업명"]).filter(Boolean),
+          ...teamMaps.map(m => m.mainProgramName)
+        ]));
+        setFunctionOptions(allFunctions);
+        setUnitOptions(allUnits);
       }
-      setLoading(false);
+    } catch (e) {
+      setError("세부사업명/필터 옵션 불러오기 실패");
+      console.error("세부사업 로드 오류:", e);
     }
-    fetchSubPrograms();
-  }, [userRole, user]);
+    setLoading(false);
+  }
+
+  fetchSubPrograms();
+}, [userRole, user]);
 
   useEffect(() => {
     async function loadStructure() {
@@ -159,16 +166,28 @@ function AttendancePerformanceManage() {
         setData(dataRows);
       });
     } else if (mode === "performance") {
-      let q = collection(db, "PerformanceSummary");
-      const conds = [];
-      
-      conds.push(where("실적유형", "!=", "대량"));
-      if (filters.function) conds.push(where("function", "==", filters.function));
-      if (filters.unit) conds.push(where("unit", "==", filters.unit));
-      if (filters.세부사업명) conds.push(where("세부사업명", "==", filters.세부사업명));
-      if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
-      
-      if (conds.length > 0) q = query(q, ...conds);
+  let q = collection(db, "PerformanceSummary");
+  const conds = [];
+  
+  conds.push(where("실적유형", "!=", "대량"));
+  
+  // ✅ 강사 권한 시 담당 세부사업으로 제한
+  if (userRole === "teacher" && subProgramOptions.length > 0) {
+    // 강사 담당 세부사업 중 하나로 필터링 (첫 번째 사업으로 기본 설정)
+    const teacherSubProgram = filters.세부사업명 || subProgramOptions[0];
+    conds.push(where("세부사업명", "==", teacherSubProgram));
+    
+    // 강사는 본인 담당 세부사업만 조회하므로 다른 필터 제한
+    if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
+  } else {
+    // 관리자/매니저는 기존 로직 유지
+    if (filters.function) conds.push(where("function", "==", filters.function));
+    if (filters.unit) conds.push(where("unit", "==", filters.unit));
+    if (filters.세부사업명) conds.push(where("세부사업명", "==", filters.세부사업명));
+    if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
+  }
+  
+  if (conds.length > 0) q = query(q, ...conds);
 
       unsubscribeRef.current = onSnapshot(q, (snapshot) => {
         const rows = snapshot.docs.map(doc => ({
@@ -207,12 +226,23 @@ function AttendancePerformanceManage() {
       setLoading(true);
       setError("");
       try {
-        const result = await fetchPerformances({
-          function: filters.function,
-          unit: filters.unit,
-          세부사업명: filters.세부사업명,
-          날짜: filters.날짜
-        });
+        // ✅ 강사 권한 시 담당 세부사업으로 필터링
+let searchFilters = {
+  function: filters.function,
+  unit: filters.unit,
+  세부사업명: filters.세부사업명,
+  날짜: filters.날짜
+};
+
+if (userRole === "teacher" && subProgramOptions.length > 0) {
+  // 강사는 담당 세부사업만 조회
+  searchFilters = {
+    세부사업명: filters.세부사업명 || subProgramOptions[0],
+    날짜: filters.날짜
+  };
+}
+
+const result = await fetchPerformances(searchFilters);
 
         console.log("실적 데이터:", result);
         if (result.length === 0) {
@@ -614,67 +644,79 @@ function AttendancePerformanceManage() {
       )}
 
       {mode === "performance" && (
-        <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <Grid item xs={12} sm={3}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              기능
-            </Typography>
-            <select
-              value={filters.function}
-              onChange={e => handleFilterChange("function", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-base"
-            >
-              <option value="">전체</option>
-              {functionOptions.map((f) => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              단위사업명
-            </Typography>
-            <select
-              value={filters.unit}
-              onChange={e => handleFilterChange("unit", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-base"
-              disabled={!filters.function}
-            >
-              <option value="">전체</option>
-              {filteredUnitOptions.map((u, idx) => (
-                <option key={u + idx} value={u}>{u}</option>
-              ))}
-            </select>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              세부사업명
-            </Typography>
-            <select
-              value={filters.세부사업명}
-              onChange={e => handleFilterChange("세부사업명", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-base"
-              disabled={!filters.unit}
-            >
-              <option value="">전체</option>
-              {filteredSubProgramOptions.map((sp, idx) => (
-                <option key={sp + idx} value={sp}>{sp}</option>
-              ))}
-            </select>
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              날짜
-            </Typography>
-            <input
-              type="date"
-              value={filters.날짜}
-              onChange={e => handleFilterChange("날짜", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-base"
-            />
-          </Grid>
+  <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+    {/* ✅ 강사는 기능/단위사업명 필터 숨기기 */}
+    {userRole !== "teacher" && (
+      <>
+        <Grid item xs={12} sm={3}>
+          <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+            기능
+          </Typography>
+          <select
+            value={filters.function}
+            onChange={e => handleFilterChange("function", e.target.value)}
+            className="w-full border rounded px-3 py-2 text-base"
+          >
+            <option value="">전체</option>
+            {functionOptions.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
         </Grid>
-      )}
+        <Grid item xs={12} sm={3}>
+          <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+            단위사업명
+          </Typography>
+          <select
+            value={filters.unit}
+            onChange={e => handleFilterChange("unit", e.target.value)}
+            className="w-full border rounded px-3 py-2 text-base"
+            disabled={!filters.function}
+          >
+            <option value="">전체</option>
+            {filteredUnitOptions.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </Grid>
+      </>
+    )}
+    <Grid item xs={12} sm={userRole === "teacher" ? 6 : 2}>
+      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+        세부사업명
+      </Typography>
+      <select
+        value={filters.세부사업명}
+        onChange={e => handleFilterChange("세부사업명", e.target.value)}
+        className="w-full border rounded px-3 py-2 text-base"
+        disabled={userRole !== "teacher" && !filters.unit}
+      >
+        <option value="">
+          {userRole === "teacher" ? "담당 세부사업 선택" : "전체"}
+        </option>
+        {userRole === "teacher" 
+          ? subProgramOptions.map((sp, idx) => (
+              <option key={sp + idx} value={sp}>{sp}</option>
+            ))
+          : filteredSubProgramOptions.map((sp, idx) => (
+              <option key={sp + idx} value={sp}>{sp}</option>
+            ))
+        }
+      </select>
+    </Grid>
+    <Grid item xs={12} sm={userRole === "teacher" ? 6 : 4}>
+      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+        날짜
+      </Typography>
+      <input
+        type="date"
+        value={filters.날짜}
+        onChange={e => handleFilterChange("날짜", e.target.value)}
+        className="w-full border rounded px-3 py-2 text-base"
+      />
+    </Grid>
+  </Grid>
+)}
 
       <Box sx={{ mb: 3 }}>
         <Button

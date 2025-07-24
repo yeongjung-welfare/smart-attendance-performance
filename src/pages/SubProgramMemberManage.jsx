@@ -1,4 +1,5 @@
 // src/pages/SubProgramMemberManage.jsx
+
 import React, { useEffect, useState } from "react";
 import {
   FormControl, InputLabel, MenuItem, Select, Button, Dialog, DialogTitle,
@@ -17,6 +18,7 @@ import useSnackbar from "../components/useSnackbar";
 import { useProgramStructure } from "../hooks/useProgramStructure";
 import useUserInfo from "../hooks/useUserInfo";
 import { getAllTeamSubProgramMaps } from "../services/teamSubProgramMapAPI";
+import { getAllMembers, checkDuplicateMember } from "../services/memberAPI";
 import {
   getSubProgramMembers, registerSubProgramMember, deleteSubProgramMember,
   deleteMultipleSubProgramMembers, findMemberByNameAndPhone, updateSubProgramMember
@@ -47,6 +49,96 @@ function SubProgramMemberManage() {
 
   const role = user?.role;
 
+  // ✅ 모바일 대응 개선된 드롭다운 공통 스타일
+  const dropdownCommonStyles = {
+    minHeight: 56,
+    backgroundColor: '#fff',
+    '& .MuiInputLabel-root': { 
+      fontSize: '1rem',
+      fontWeight: 500,
+      color: '#1976d2',
+      zIndex: 1
+    },
+    '& .MuiSelect-select': { 
+      fontSize: '1rem',
+      minHeight: '1.4375em',
+      display: 'flex',
+      alignItems: 'center',
+      color: '#000 !important', // ✅ 강제 색상 적용
+      backgroundColor: '#fff !important' // ✅ 강제 배경색 적용
+    },
+    '& .MuiOutlinedInput-root': {
+      backgroundColor: '#fff',
+      '& fieldset': {
+        borderColor: '#d1d5db'
+      },
+      '&:hover fieldset': {
+        borderColor: '#1976d2'
+      },
+      '&.Mui-focused fieldset': {
+        borderColor: '#1976d2'
+      }
+    }
+  };
+
+  // ✅ 모바일 대응 MenuProps 설정
+  const getMenuProps = () => ({
+    PaperProps: {
+      sx: {
+        maxHeight: 300,
+        backgroundColor: '#fff', // ✅ 메뉴 배경색 명시
+        '& .MuiList-root': {
+          backgroundColor: '#fff', // ✅ 리스트 배경색 명시
+          padding: 0
+        },
+        '& .MuiMenuItem-root': {
+          fontSize: '1rem',
+          minHeight: 48,
+          padding: '12px 16px',
+          color: '#000 !important', // ✅ 모바일에서 텍스트 색상 강제 적용
+          backgroundColor: '#fff !important', // ✅ 모바일에서 배경색 강제 적용
+          borderBottom: '1px solid #f0f0f0', // ✅ 구분선 추가
+          '&:hover': {
+            backgroundColor: '#f5f5f5 !important', // ✅ 호버 효과
+            color: '#000 !important'
+          },
+          '&.Mui-selected': {
+            backgroundColor: '#e3f2fd !important', // ✅ 선택된 항목 배경색
+            color: '#1976d2 !important', // ✅ 선택된 항목 텍스트 색상
+            '&:hover': {
+              backgroundColor: '#bbdefb !important'
+            }
+          },
+          // ✅ 모바일 터치 대응
+          '@media (max-width: 600px)': {
+            fontSize: '1.1rem',
+            minHeight: 52,
+            padding: '14px 16px'
+          }
+        }
+      }
+    },
+    // ✅ 모바일에서 메뉴 위치 조정
+    anchorOrigin: {
+      vertical: 'bottom',
+      horizontal: 'left'
+    },
+    transformOrigin: {
+      vertical: 'top',
+      horizontal: 'left'
+    },
+    // ✅ 모바일에서 전체 화면 너비 사용
+    sx: {
+      '& .MuiPaper-root': {
+        '@media (max-width: 600px)': {
+          maxWidth: '100vw',
+          left: '0 !important',
+          right: '0 !important'
+        }
+      }
+    }
+  });
+
   // 전체 세부사업명 목록 로드
   useEffect(() => {
     async function loadAllSubPrograms() {
@@ -61,10 +153,12 @@ function SubProgramMemberManage() {
     loadAllSubPrograms();
   }, []);
 
-  // 올바른 드릴다운 옵션
+  // ✅ 개선된 드릴다운 옵션 - 필터 없이도 전체 세부사업 표시
   const teamOptions = Object.keys(structure).sort();
   const unitOptions = filters.팀명 ? Object.keys(structure[filters.팀명] || {}).sort() : [];
-  const subProgramOptions = filters.팀명 && filters.단위사업명 ? structure[filters.팀명][filters.단위사업명] || [] : [];
+  const subProgramOptions = filters.팀명 && filters.단위사업명 
+    ? structure[filters.팀명][filters.단위사업명] || [] 
+    : allSubPrograms; // ✅ 필터가 없을 때는 전체 세부사업 목록 사용
 
   // 초기 전체 이용자 로드
   useEffect(() => {
@@ -93,7 +187,6 @@ function SubProgramMemberManage() {
     setIsLoading(true);
     // 조회할 때마다 선택 상태 초기화
     setSelectedIds([]);
-    
     try {
       // 필터가 비어있을 때는 전체 조회
       if (!filters.팀명 && !filters.단위사업명 && !filters.세부사업명) {
@@ -106,7 +199,7 @@ function SubProgramMemberManage() {
         if (filters.팀명) queryFilters.팀명 = filters.팀명;
         if (filters.단위사업명) queryFilters.단위사업명 = filters.단위사업명;
         if (filters.세부사업명) queryFilters.세부사업명 = filters.세부사업명;
-        
+
         const data = await getSubProgramMembers(queryFilters);
         setMembers(Array.isArray(data) ? data : []);
         showSnackbar(`조건에 맞는 ${data?.length || 0}명의 이용자를 조회했습니다.`, "success");
@@ -132,7 +225,6 @@ function SubProgramMemberManage() {
   const reloadAfterChange = async () => {
     // 데이터 새로고침 시 선택 상태 초기화
     setSelectedIds([]);
-    
     if (filters.팀명 || filters.단위사업명 || filters.세부사업명) {
       await handleSearch();
     } else {
@@ -151,7 +243,20 @@ function SubProgramMemberManage() {
 
   const handleRegister = async (member) => {
     try {
+      // ✅ 🔥 전체회원 존재 여부 검증 추가
       if (member.연락처) {
+        
+        const memberExists = await checkDuplicateMember({
+          name: member.이용자명.trim(),
+          birthdate: member.생년월일,
+          phone: member.연락처.trim()
+        });
+
+        if (!memberExists) {
+          showSnackbar(`'${member.이용자명}' 이용자가 전체회원 관리에 등록되어 있지 않습니다. 전체회원으로 먼저 등록해주세요.`, "error");
+          return;
+        }
+
         const exist = await findMemberByNameAndPhone(member.이용자명.trim(), member.연락처.trim());
         if (exist) {
           await updateSubProgramMember(exist.id, {
@@ -221,7 +326,7 @@ function SubProgramMemberManage() {
       console.warn("⚠️ targetMembers가 배열이 아닙니다:", targetMembers);
       return;
     }
-    
+
     if (checked) {
       // 모두 선택 - 중복 제거
       const allIds = targetMembers.map((m) => String(m.id || m.고유아이디)).filter(Boolean);
@@ -263,6 +368,7 @@ function SubProgramMemberManage() {
         if (updatedData.소득구분) updateFields.소득구분 = updatedData.소득구분;
         if (updatedData.유료무료) updateFields.유료무료 = updatedData.유료무료;
         if (updatedData.이용상태) updateFields.이용상태 = updatedData.이용상태;
+
         await updateSubProgramMember(id, updateFields);
       }
 
@@ -298,11 +404,9 @@ function SubProgramMemberManage() {
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 200 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
         <CircularProgress />
-        <Typography variant="body1" sx={{ ml: 2 }}>
-          데이터를 불러오는 중...
-        </Typography>
+        <Typography sx={{ ml: 2 }}>데이터를 불러오는 중...</Typography>
       </Box>
     );
   }
@@ -310,263 +414,171 @@ function SubProgramMemberManage() {
   return (
     <ErrorBoundary>
       <Box sx={{ p: 3 }}>
-        <Typography variant="h4" sx={{ mb: 3, fontWeight: 600 }}>
+        <Typography variant="h5" sx={{ mb: 3, fontWeight: 600 }}>
           세부사업별 이용자 관리
         </Typography>
 
-        {/* ✅ 완전히 개선된 드롭다운 크기 및 스타일링 */}
-        <Box sx={{ mb: 3 }}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={4}>
-              <FormControl 
-                fullWidth 
-                size="medium"
-                sx={{
-                  '& .MuiInputLabel-root': {
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                    transform: 'translate(14px, 20px) scale(1)',
-                    '&.MuiInputLabel-shrink': {
-                      transform: 'translate(14px, -9px) scale(0.75)'
-                    }
-                  },
-                  '& .MuiSelect-select': {
-                    minHeight: '24px',
-                    padding: '20px 14px',
-                    fontSize: '1rem',
-                    lineHeight: '1.5',
-                    display: 'flex',
-                    alignItems: 'center'
-                  },
-                  '& .MuiOutlinedInput-root': {
-                    minHeight: '64px',
-                    '& fieldset': {
-                      borderWidth: '1px'
-                    },
-                    '&:hover fieldset': {
-                      borderWidth: '2px'
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderWidth: '2px'
-                    }
-                  }
-                }}
+        {/* ✅ 모바일 대응 개선된 드롭다운 */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormControl fullWidth size="medium" sx={dropdownCommonStyles}>
+              <InputLabel>팀명</InputLabel>
+              <Select
+                value={filters.팀명}
+                onChange={(e) => setFilters({ ...filters, 팀명: e.target.value, 단위사업명: "", 세부사업명: "" })}
+                label="팀명"
+                MenuProps={getMenuProps()}
               >
-                <InputLabel>팀명</InputLabel>
-                <Select
-                  value={filters.팀명}
-                  onChange={(e) => setFilters({ ...filters, 팀명: e.target.value, 단위사업명: "", 세부사업명: "" })}
-                  label="팀명"
-                >
-                  <MenuItem value="">전체</MenuItem>
-                  {teamOptions.map((team) => (
-                    <MenuItem key={team} value={team}>{team}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} sm={4}>
-              <FormControl 
-                fullWidth 
-                size="medium"
-                sx={{
-                  '& .MuiInputLabel-root': {
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                    transform: 'translate(14px, 20px) scale(1)',
-                    '&.MuiInputLabel-shrink': {
-                      transform: 'translate(14px, -9px) scale(0.75)'
-                    }
-                  },
-                  '& .MuiSelect-select': {
-                    minHeight: '24px',
-                    padding: '20px 14px',
-                    fontSize: '1rem',
-                    lineHeight: '1.5',
-                    display: 'flex',
-                    alignItems: 'center'
-                  },
-                  '& .MuiOutlinedInput-root': {
-                    minHeight: '64px',
-                    '& fieldset': {
-                      borderWidth: '1px'
-                    },
-                    '&:hover fieldset': {
-                      borderWidth: '2px'
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderWidth: '2px'
-                    }
-                  }
-                }}
-              >
-                <InputLabel>단위사업명</InputLabel>
-                <Select
-                  value={filters.단위사업명}
-                  onChange={(e) => setFilters({ ...filters, 단위사업명: e.target.value, 세부사업명: "" })}
-                  label="단위사업명"
-                  disabled={!filters.팀명}
-                >
-                  <MenuItem value="">전체</MenuItem>
-                  {unitOptions.map((unit) => (
-                    <MenuItem key={unit} value={unit}>{unit}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} sm={4}>
-              <FormControl 
-                fullWidth 
-                size="medium"
-                sx={{
-                  '& .MuiInputLabel-root': {
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                    transform: 'translate(14px, 20px) scale(1)',
-                    '&.MuiInputLabel-shrink': {
-                      transform: 'translate(14px, -9px) scale(0.75)'
-                    }
-                  },
-                  '& .MuiSelect-select': {
-                    minHeight: '24px',
-                    padding: '20px 14px',
-                    fontSize: '1rem',
-                    lineHeight: '1.5',
-                    display: 'flex',
-                    alignItems: 'center'
-                  },
-                  '& .MuiOutlinedInput-root': {
-                    minHeight: '64px',
-                    '& fieldset': {
-                      borderWidth: '1px'
-                    },
-                    '&:hover fieldset': {
-                      borderWidth: '2px'
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderWidth: '2px'
-                    }
-                  }
-                }}
-              >
-                <InputLabel>세부사업명</InputLabel>
-                <Select
-                  value={filters.세부사업명}
-                  onChange={(e) => setFilters({ ...filters, 세부사업명: e.target.value })}
-                  label="세부사업명"
-                  disabled={!filters.단위사업명}
-                >
-                  <MenuItem value="">전체</MenuItem>
-                  {subProgramOptions.map((sub) => (
-                    <MenuItem key={sub} value={sub}>{sub}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+                <MenuItem value="">전체</MenuItem>
+                {teamOptions.map((team) => (
+                  <MenuItem key={team} value={team}>{team}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
 
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mt: 3 }}>
-            <Button 
-              variant="contained" 
-              onClick={handleSearch} 
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormControl fullWidth size="medium" sx={dropdownCommonStyles}>
+              <InputLabel>단위사업명</InputLabel>
+              <Select
+                value={filters.단위사업명}
+                onChange={(e) => setFilters({ ...filters, 단위사업명: e.target.value, 세부사업명: "" })}
+                label="단위사업명"
+                disabled={!filters.팀명}
+                MenuProps={getMenuProps()}
+              >
+                <MenuItem value="">전체</MenuItem>
+                {unitOptions.map((unit) => (
+                  <MenuItem key={unit} value={unit}>{unit}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 4 }}>
+            <FormControl fullWidth size="medium" sx={dropdownCommonStyles}>
+              <InputLabel>세부사업명</InputLabel>
+              <Select
+                value={filters.세부사업명}
+                onChange={(e) => setFilters({ ...filters, 세부사업명: e.target.value })}
+                label="세부사업명"
+                disabled={!filters.단위사업명}
+                MenuProps={getMenuProps()}
+              >
+                <MenuItem value="">전체</MenuItem>
+                {subProgramOptions.map((sub) => (
+                  <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Button
+              variant="contained"
+              onClick={handleSearch}
               disabled={isLoading}
+              fullWidth
               size="large"
               sx={{ 
-                minWidth: 140, 
-                height: 56,
-                fontSize: '1.1rem',
-                fontWeight: 600
+                height: 56, 
+                fontSize: '1.1rem', 
+                fontWeight: 600,
+                borderRadius: 2
               }}
             >
               {isLoading ? "조회 중..." : "조회"}
             </Button>
+          </Grid>
+        </Grid>
 
-            {/* 활성 이용자 필터링 토글 */}
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={showOnlyActive}
-                  onChange={(e) => setShowOnlyActive(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="활성 이용자만 표시"
-              sx={{ fontSize: '1rem' }}
-            />
-          </Box>
+        {/* 활성 이용자 필터링 토글 */}
+        <Box sx={{ mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showOnlyActive}
+                onChange={(e) => setShowOnlyActive(e.target.checked)}
+                color="primary"
+              />
+            }
+            label="활성 이용자만 표시"
+            sx={{ fontSize: '1rem' }}
+          />
         </Box>
 
         {/* 액션 버튼 그룹 - 크기 개선 */}
-        <Box sx={{ mb: 3 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => setShowMemberSelect(true)}
-                fullWidth
-                size="large"
-                sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
-              >
-                이용자 등록
-              </Button>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={3}>
-              <Button
-                variant="outlined"
-                onClick={() => setShowUpload(true)}
-                fullWidth
-                size="large"
-                sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
-              >
-                대량 업로드
-              </Button>
-            </Grid>
-
-            {selectedIds.length > 0 && (
-              <>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    onClick={() => handleBulkEdit(selectedIds)}
-                    fullWidth
-                    size="large"
-                    sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
-                  >
-                    선택 수정 ({selectedIds.length})
-                  </Button>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3}>
-                  <Button
-                    variant="contained"
-                    color="error"
-                    onClick={() => handleBulkDelete(selectedIds)}
-                    fullWidth
-                    size="large"
-                    sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
-                  >
-                    선택 삭제 ({selectedIds.length})
-                  </Button>
-                </Grid>
-              </>
-            )}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Button
+              variant="contained"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setShowMemberSelect(true);
+              }}
+              fullWidth
+              size="large"
+              sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
+            >
+              이용자 등록
+            </Button>
           </Grid>
-        </Box>
+
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Button
+              variant="outlined"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setShowUpload(true);
+              }}
+              fullWidth
+              size="large"
+              sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
+            >
+              대량 업로드
+            </Button>
+          </Grid>
+
+          {selectedIds.length > 0 && (
+            <>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  onClick={() => handleBulkEdit(selectedIds)}
+                  fullWidth
+                  size="large"
+                  sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
+                >
+                  선택 수정 ({selectedIds.length})
+                </Button>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => handleBulkDelete(selectedIds)}
+                  fullWidth
+                  size="large"
+                  sx={{ height: 56, fontSize: '1rem', fontWeight: 600 }}
+                >
+                  선택 삭제 ({selectedIds.length})
+                </Button>
+              </Grid>
+            </>
+          )}
+        </Grid>
 
         {/* 데이터 테이블 */}
         <SubProgramMemberTable
           members={getActiveMembers()}
+          onEdit={handleEdit}
           onDelete={handleDelete}
           onBulkDelete={handleBulkDelete}
           onBulkEdit={handleBulkEdit}
           canDelete={canDelete}
           role={role}
-          onEdit={handleEdit}
           selectedIds={selectedIds}
           onSelectAll={handleSelectAll}
           onSelectRow={handleSelectRow}
@@ -580,8 +592,13 @@ function SubProgramMemberManage() {
           maxWidth="md"
           fullWidth
           fullScreen={window.innerWidth < 600}
+          disableAutoFocus={false}
+          disableEnforceFocus={false}
+          disableRestoreFocus={true}
+          keepMounted={false}
+          aria-labelledby="upload-dialog-title"
         >
-          <DialogTitle>이용자 대량 업로드</DialogTitle>
+          <DialogTitle id="upload-dialog-title">이용자 대량 업로드</DialogTitle>
           <DialogContent>
             <SubProgramMemberUploadForm
               onSuccess={handleUpload}
@@ -598,8 +615,8 @@ function SubProgramMemberManage() {
 
         {editingMember && (
           <SubProgramMemberEditModal
-            open={!!editingMember}
             member={editingMember}
+            open={!!editingMember}
             onClose={() => setEditingMember(null)}
             onSave={handleEditSave}
           />
@@ -619,6 +636,7 @@ function SubProgramMemberManage() {
           open={showMemberSelect}
           onClose={() => setShowMemberSelect(false)}
           onSelect={(member) => {
+            console.log("✅ 선택된 회원 데이터:", member); // 디버깅용
             setPendingMember(member);
             setShowMemberSelect(false);
           }}
@@ -630,24 +648,25 @@ function SubProgramMemberManage() {
           maxWidth="sm"
           fullWidth
           fullScreen={window.innerWidth < 600}
+          disableAutoFocus={false}
+          disableEnforceFocus={false}
+          disableRestoreFocus={true}
+          keepMounted={false}
+          aria-labelledby="register-dialog-title"
         >
-          <DialogTitle>회원 등록</DialogTitle>
+          <DialogTitle id="register-dialog-title">회원 등록</DialogTitle>
           <DialogContent>
             <SubProgramMemberRegisterForm
-              initialData={pendingMember}
               onRegister={(data) => {
                 handleRegister(data);
                 setShowRegisterDialog(false);
                 setPendingMember(null);
               }}
-              onClose={() => {
-                setShowRegisterDialog(false);
-                setPendingMember(null);
-              }}
+              initialData={pendingMember}
               filters={filters}
-              teamName={filters.팀명}
-              unitName={filters.단위사업명}
-              subProgramName={filters.세부사업명}
+              subProgramOptions={subProgramOptions} // ✅ 이제 항상 전체 세부사업 포함
+              directSubProgramSelect={true}
+              allSubPrograms={allSubPrograms} // ✅ 백업용 전체 세부사업 목록 추가
             />
           </DialogContent>
           <DialogActions>

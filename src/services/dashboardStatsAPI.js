@@ -1,6 +1,7 @@
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { isPresent } from "../utils/attendanceUtils";
+import { getCurrentKoreanDate } from "../utils/dateUtils"; // ✅ 추가
 
 // 전체 회원 수
 export async function getTotalMembers() {
@@ -10,7 +11,7 @@ export async function getTotalMembers() {
 
 // 오늘 출석 수
 export async function getTodayAttendance() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getCurrentKoreanDate(); // ✅ UTC 시간 문제 해결
   const q = query(collection(db, "AttendanceRecords"), where("날짜", "==", today));
   const snapshot = await getDocs(q);
   let count = 0;
@@ -31,12 +32,12 @@ export async function getPendingUsers() {
 // 이달 신규 등록자 수 (회원 등록일자 기준)
 export async function getTotalNewUsersThisMonth() {
   const now = new Date();
-  const currentMonth = now.toISOString().slice(0, 7); // "YYYY-MM"
+  const currentMonth = getCurrentKoreanDate().slice(0, 7); // ✅ 한국 시간 기준으로 변경
   const snapshot = await getDocs(collection(db, "Members"));
   let count = 0;
   snapshot.docs.forEach(doc => {
     const data = doc.data();
-    const regMonth = data.createdAt?.slice(0, 7);
+    const regMonth = data.createdAt?.slice(0, 7) || data.registrationDate?.slice(0, 7);
     if (regMonth === currentMonth) count++;
   });
   return count;
@@ -64,6 +65,7 @@ export async function getTopSubProgram() {
     const total = Number(data.연인원) || 0;
     if (sub) counts[sub] = (counts[sub] || 0) + total;
   });
+
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   return sorted.length > 0 ? sorted[0][0] : "없음";
 }
@@ -72,13 +74,14 @@ export async function getTopSubProgram() {
 export async function getMonthlyPerformanceData(months = 5) {
   const q = collection(db, "PerformanceSummary");
   const snapshot = await getDocs(q);
+
   // 월별, 기능, 팀명, 단위사업명, 세부사업명별 집계
   const map = new Map();
-
   snapshot.docs.forEach(doc => {
     const d = doc.data();
     const month = d.날짜?.slice(0, 7);
     if (!month) return;
+
     const key = [
       d.function || "",
       d.team || "",
@@ -86,7 +89,15 @@ export async function getMonthlyPerformanceData(months = 5) {
       d.세부사업명 || "",
       month
     ].join("|");
-    const prev = map.get(key) || { 연인원: 0, function: d.function, team: d.team, unit: d.unit, subProgram: d.세부사업명, month };
+
+    const prev = map.get(key) || { 
+      연인원: 0, 
+      function: d.function, 
+      team: d.team, 
+      unit: d.unit, 
+      subProgram: d.세부사업명, 
+      month 
+    };
     prev.연인원 += Number(d.연인원) || 0;
     map.set(key, prev);
   });
@@ -101,6 +112,7 @@ export async function getMonthlyPerformanceData(months = 5) {
 export async function getRecentAttendanceData(days = 7) {
   const q = collection(db, "AttendanceRecords");
   const snapshot = await getDocs(q);
+
   // 프로그램별+날짜별 1회만 집계
   const map = new Map();
   const sessionSet = new Set();
@@ -110,6 +122,7 @@ export async function getRecentAttendanceData(days = 7) {
     const date = d.날짜;
     const subProgram = d.세부사업명 || "";
     if (!date || !subProgram) return;
+
     // 프로그램별+날짜별 1회만
     const sessionKey = `${subProgram}_${date}`;
     if (sessionSet.has(sessionKey)) return;

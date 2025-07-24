@@ -20,31 +20,32 @@ export async function fetchPerformanceStats({
   quarters,
   performanceType = "전체"
 } = {}) {
-  
   console.log("📊 fetchPerformanceStats 호출:", { func, team, unit, subProgram, months, quarters, performanceType });
-  
-  // ✅ 수정된 쿼리 로직: 더 안전하고 포괄적인 조회
+
+  // ✅ 수정된 쿼리 로직: 월별 필터는 클라이언트에서 처리
   const queries = [];
-  
-  // 공통 필터 조건
+
+  // 공통 필터 조건 (월별 필터 제거)
   const commonConstraints = [];
   if (func) commonConstraints.push(where("기능", "==", func));
   if (team) commonConstraints.push(where("팀명", "==", team));
   if (unit) commonConstraints.push(where("단위사업명", "==", unit));
   if (subProgram) commonConstraints.push(where("세부사업명", "==", subProgram));
-  if (months && months.length > 0) {
-    commonConstraints.push(where("month", "in", months));
-  }
 
   // ✅ 실적유형별 쿼리 전략 개선
   if (performanceType === "전체") {
     // 전체 조회: 개별실적과 대량실적을 각각 조회
-    
     // 1) 개별실적 조회 (실적유형이 "대량"이 아닌 모든 데이터)
-    let individualQuery = collection(db, "PerformanceSummary");
-    const individualConstraints = [...commonConstraints];
-    // ✅ 핵심 수정: "개별"로 직접 조회하지 않고 "대량"이 아닌 모든 것 조회
-    individualConstraints.push(where("실적유형", "!=", "대량"));
+    // 1) 개별실적 조회
+let individualQuery = collection(db, "PerformanceSummary");
+let individualConstraints = [...commonConstraints];  // ✅ let으로 변경
+// ✅ 안전한 쿼리로 변경 - 복합 부등식 제거
+try {
+  individualConstraints.push(where("실적유형", "==", "개별"));
+} catch (error) {
+  console.warn("개별 실적 쿼리 실패, 전체 조회로 대체:", error);
+  individualConstraints = [...commonConstraints];  // ✅ let으로 재할당 가능
+}
     
     if (individualConstraints.length > 0) {
       individualQuery = query(individualQuery, ...individualConstraints);
@@ -53,27 +54,25 @@ export async function fetchPerformanceStats({
 
     // 2) 대량실적 조회
     let bulkQuery = collection(db, "PerformanceSummary");
-    const bulkConstraints = [...commonConstraints, where("실적유형", "==", "대량")];
+    let bulkConstraints = [...commonConstraints, where("실적유형", "==", "대량")];
     
     if (bulkConstraints.length > 0) {
       bulkQuery = query(bulkQuery, ...bulkConstraints);
     }
     queries.push(bulkQuery);
-    
   } else if (performanceType === "개별") {
     // 개별실적만 조회
     let individualQuery = collection(db, "PerformanceSummary");
-    const individualConstraints = [...commonConstraints, where("실적유형", "!=", "대량")];
+    let individualConstraints = [...commonConstraints, where("실적유형", "!=", "대량")];
     
     if (individualConstraints.length > 0) {
       individualQuery = query(individualQuery, ...individualConstraints);
     }
     queries.push(individualQuery);
-    
   } else if (performanceType === "대량") {
     // 대량실적만 조회
     let bulkQuery = collection(db, "PerformanceSummary");
-    const bulkConstraints = [...commonConstraints, where("실적유형", "==", "대량")];
+    let bulkConstraints = [...commonConstraints, where("실적유형", "==", "대량")];
     
     if (bulkConstraints.length > 0) {
       bulkQuery = query(bulkQuery, ...bulkConstraints);
@@ -84,9 +83,22 @@ export async function fetchPerformanceStats({
   console.log("📊 실행할 쿼리 개수:", queries.length);
 
   // ✅ 병렬 쿼리 실행
-  const snapshots = await Promise.all(queries.map(q => getDocs(q)));
+  const snapshots = await Promise.all(
+  queries.map(async (q) => {
+    try {
+      return await getDocs(q);
+    } catch (error) {
+      console.error("쿼리 실행 오류:", error);
+      if (error.code === 'failed-precondition') {
+        // 인덱스 부족 시 빈 결과 반환
+        return { docs: [] };
+      }
+      throw error;
+    }
+  })
+);
   const allDocs = snapshots.flatMap(snapshot => snapshot.docs);
-  
+
   console.log("📊 조회된 문서 개수:", allDocs.length);
   console.log("📊 조회된 데이터 샘플:", allDocs.slice(0, 3).map(doc => ({
     id: doc.id,
@@ -106,6 +118,8 @@ export async function fetchPerformanceStats({
     const month = d.날짜 ? d.날짜.slice(5, 7) : d.month;
     const quarter = month ? Math.ceil(parseInt(month, 10) / 3).toString() : "";
 
+    // ✅ 클라이언트 측 월별/분기별 필터링
+    if (Array.isArray(months) && months.length > 0 && !months.includes(month)) return;
     if (Array.isArray(quarters) && quarters.length > 0 && !quarters.includes(quarter)) return;
 
     // 💡 필드명 매핑 보완 (한글 필드 대응 추가)
@@ -165,14 +179,14 @@ export async function fetchPerformanceStats({
 
     // ✅ 대량실적과 개별실적 구분 처리 (더 안전한 조건)
     const isBulkPerformance = d.실적유형 && d.실적유형.trim() === "대량";
-    
+
     if (isBulkPerformance) {
       // 대량실적 처리
       grouped[key].registered += Number(d.등록인원) || 0;
       grouped[key].actual += Number(d.실인원) || 0;
       grouped[key].total += Number(d.연인원) || 0;
       grouped[key].cases += Number(d.건수) || 0;
-      
+
       // 성별별 집계 (대량실적도 성별 데이터가 있는 경우 처리)
       if (d.actualMale !== undefined) grouped[key].actualMale += Number(d.actualMale) || 0;
       if (d.actualFemale !== undefined) grouped[key].actualFemale += Number(d.actualFemale) || 0;
@@ -182,7 +196,6 @@ export async function fetchPerformanceStats({
       if (d.paidFemale !== undefined) grouped[key].paidFemale += Number(d.paidFemale) || 0;
       if (d.freeMale !== undefined) grouped[key].freeMale += Number(d.freeMale) || 0;
       if (d.freeFemale !== undefined) grouped[key].freeFemale += Number(d.freeFemale) || 0;
-      
     } else {
       // 개별실적 처리: 출석여부가 출석일 때만 집계
       if (isPresent(d.출석여부)) {
@@ -208,10 +221,10 @@ export async function fetchPerformanceStats({
           if (d.성별 === "남") grouped[key].freeMale += 1;
           if (d.성별 === "여") grouped[key].freeFemale += 1;
         }
+      }
 
-        if ((!d.실인원 && !d.연인원) && d.건수) {
-          grouped[key].cases += Number(d.건수) || 0;
-        }
+      if ((!d.실인원 && !d.연인원) && d.건수) {
+        grouped[key].cases += Number(d.건수) || 0;
       }
     }
 

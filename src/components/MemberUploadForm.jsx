@@ -10,30 +10,16 @@ import {
 } from "../services/memberAPI";
 import { getAgeGroup } from "../utils/ageGroup";
 import { getAge } from "../utils/ageUtils";
+import { normalizeDate, getCurrentKoreanDate } from "../utils/dateUtils";
 import useMediaQuery from '@mui/material/useMediaQuery';
 import Box from '@mui/material/Box';
 
+// ✅ 전화번호 정규화 함수 추가
 function normalizePhone(phone) {
   const digits = (phone || "").replace(/\D/g, "");
   return digits.length === 11
     ? `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
     : phone || "";
-}
-
-function normalizeDate(date) {
-  if (!date) return "";
-  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  try {
-    if (typeof date === "number") {
-      const excelStart = new Date(1899, 11, 30);
-      const d = new Date(excelStart.getTime() + (date - 1) * 24 * 60 * 60 * 1000);
-      return d.toISOString().split("T")[0];
-    }
-    const d = new Date(date);
-    return d.toISOString().split("T")[0];
-  } catch {
-    return "";
-  }
 }
 
 const REQUIRED_HEADERS = ["이용자명", "성별", "생년월일", "연락처", "주소", "행정동", "소득구분"];
@@ -74,6 +60,7 @@ function MemberUploadForm({ onSuccess, onClose }) {
 
       const firstRow = Object.keys(raw[0]);
       const missingHeaders = REQUIRED_HEADERS.filter(h => !firstRow.includes(h));
+
       if (missingHeaders.length > 0) {
         setResult({ error: `누락된 헤더: ${missingHeaders.join(", ")}` });
         setUploading(false);
@@ -85,29 +72,66 @@ function MemberUploadForm({ onSuccess, onClose }) {
 
       for (const row of raw) {
         const name = row["이용자명"]?.trim() || "";
-        const birthdate = normalizeDate(row["생년월일"]);
-        const phone = normalizePhone(row["연락처"]);
+        const birthdate = normalizeDate(row["생년월일"]); // ✅ 통합된 normalizeDate 사용
+        const phone = normalizePhone(row["연락처"]); // ✅ 전화번호 정규화
+
         if (!name || !birthdate || !phone) {
           failed++;
           setErrors(prev => [...prev, { row, error: "필수 항목 누락 (이용자명, 생년월일, 연락처)" }]);
           continue;
         }
 
+        // ✅ 개선된 중복 체크 (정규화된 데이터로)
+        const isDuplicate = await checkDuplicateMember({ name, birthdate, phone });
+
+        if (isDuplicate) {
+          failed++;
+          setErrors(prev => [...prev, { row, error: "중복된 회원 (이름, 생년월일, 연락처 일치)" }]);
+          continue;
+        }
+
         const base = {
           name,
           gender: row["성별"]?.trim() || "",
-          birthdate,
-          phone,
+          birthdate, // ✅ 정규화된 날짜 문자열
+          phone, // ✅ 정규화된 전화번호
           address: row["주소"]?.trim() || "",
           district: row["행정동"]?.trim() || "",
           incomeType: row["소득구분"]?.trim() || "일반",
-          registeredAt: new Date().toISOString().split("T")[0]
+          disability: row["장애유무"]?.trim() || "무",
+          registrationDate: getCurrentKoreanDate()
         };
 
-        base.ageGroup = getAgeGroup(birthdate.substring(0, 4));
-        base.age = getAge(birthdate);
+        // 연령대 계산
+        if (birthdate && birthdate.length >= 4) {
+          base.ageGroup = getAgeGroup(birthdate.substring(0, 4));
+        } else {
+          base.ageGroup = "미상";
+        }
 
-        const existing = allMembers.find(m => m.name === name && m.birthdate === birthdate && m.phone === phone);
+        if (typeof getAge === "function" && birthdate) {
+          base.age = getAge(birthdate);
+        } else {
+          base.age = null;
+        }
+
+        // 디버깅 로그
+        console.log("📤 전체회원 업로드 데이터:", {
+          name: base.name,
+          rawBirthdate: row["생년월일"],
+          normalizedBirthdate: birthdate,
+          birthdateType: typeof row["생년월일"],
+          ageGroup: base.ageGroup,
+          rawPhone: row["연락처"],
+          normalizedPhone: phone
+        });
+
+        // ✅ 기존 회원 찾기 (정규화된 데이터로 비교)
+        const existing = allMembers.find(m =>
+          m.name === name &&
+          normalizeDate(m.birthdate) === birthdate &&
+          normalizePhone(m.phone) === phone
+        );
 
         if (existing) {
           const updatedData = { ...existing };
@@ -116,6 +140,7 @@ function MemberUploadForm({ onSuccess, onClose }) {
               updatedData[key] = base[key];
             }
           });
+
           await updateMember(existing.id, updatedData);
           updated++;
         } else {
@@ -132,6 +157,7 @@ function MemberUploadForm({ onSuccess, onClose }) {
       setResult({ added, updated, failed });
       if (unmatchedRows.length > 0) setShowUnmatchedDialog(true);
       if (typeof onSuccess === "function") onSuccess();
+
     } catch (err) {
       setResult({ error: err.message });
     } finally {
@@ -140,38 +166,47 @@ function MemberUploadForm({ onSuccess, onClose }) {
   };
 
   return (
-    <Paper sx={{ my: 2, p: 3, width: isMobile ? "100%" : 600, mx: "auto" }}>
-      <Typography variant="h6" gutterBottom>회원 대량 업로드</Typography>
-      <Button
-        component="label"
-        variant="contained"
-        startIcon={<UploadFileIcon />}
-        disabled={uploading}
-        sx={{ fontSize: { xs: "1rem", sm: "1.1rem" }, py: 1.2, width: { xs: "100%", sm: "auto" } }}
-      >
-        엑셀/CSV 파일 선택
+    <Paper sx={{ p: { xs: 2, sm: 3 }, maxWidth: "100%" }}>
+      <Typography variant="h5" gutterBottom sx={{ textAlign: "center", mb: 3 }}>
+        회원 대량 업로드
+      </Typography>
+
+      <Box sx={{ mb: 3, textAlign: "center" }}>
         <input
           type="file"
-          accept=".xlsx,.xls,.csv"
-          hidden
           ref={fileInput}
           onChange={handleFile}
+          accept=".xlsx,.xls,.csv"
+          style={{ display: "none" }}
         />
-      </Button>
-      {uploading && <LinearProgress sx={{ mt: 2 }} />}
+        <Button
+          onClick={() => fileInput.current?.click()}
+          variant="contained"
+          startIcon={<UploadFileIcon />}
+          disabled={uploading}
+          sx={{ fontSize: { xs: "1rem", sm: "1.1rem" }, py: 1.2, width: { xs: "100%", sm: "auto" } }}
+        >
+          엑셀/CSV 파일 선택
+        </Button>
+      </Box>
+
+      {uploading && <LinearProgress sx={{ mb: 2 }} />}
+
       {result?.added !== undefined && (
-        <Alert severity={result.failed === 0 ? "success" : "warning"} sx={{ mt: 2 }}>
+        <Alert severity="success" sx={{ mb: 2 }}>
           {result.added}명 신규 등록, {result.updated}명 정보 업데이트, {result.failed}명 실패
         </Alert>
       )}
+
       {result?.error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
           오류: {result.error}
         </Alert>
       )}
+
       {errors.length > 0 && (
-        <TableContainer component={Paper} sx={{ overflowX: "auto", maxWidth: "100%" }}>
-          <Table size="small" sx={{ minWidth: 700 }}>
+        <TableContainer component={Paper} sx={{ mb: 2, maxHeight: 300 }}>
+          <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>행 정보</TableCell>
@@ -181,33 +216,47 @@ function MemberUploadForm({ onSuccess, onClose }) {
             <TableBody>
               {errors.map((e, i) => (
                 <TableRow key={i}>
-                  <TableCell sx={{ fontSize: { xs: "0.8rem", sm: "1rem" } }}>{JSON.stringify(e.row)}</TableCell>
-                  <TableCell sx={{ fontSize: { xs: "0.8rem", sm: "1rem" } }}>{e.error}</TableCell>
+                  <TableCell>{JSON.stringify(e.row)}</TableCell>
+                  <TableCell>{e.error}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
-      <Typography variant="body2" sx={{ mt: 2 }}>
+
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         ※ 엑셀 첫 번째 행(헤더)은 아래 형식이어야 합니다:<br />
-        <code>이용자명, 성별, 생년월일, 연락처, 주소, 행정동, 소득구분, 장애유무</code>
+        이용자명, 성별, 생년월일, 연락처, 주소, 행정동, 소득구분, 장애유무
       </Typography>
-      <Box mt={2}>
-        <Button onClick={onClose} sx={{ fontSize: { xs: "1rem", sm: "1.1rem" }, width: { xs: "100%", sm: "auto" } }}>닫기</Button>
-      </Box>
-      <Dialog open={showUnmatchedDialog} onClose={() => setShowUnmatchedDialog(false)} maxWidth="md" fullWidth>
+
+      {onClose && (
+        <Box sx={{ textAlign: "center" }}>
+          <Button onClick={onClose} variant="outlined">
+            닫기
+          </Button>
+        </Box>
+      )}
+
+      <Dialog
+        open={showUnmatchedDialog}
+        onClose={() => setShowUnmatchedDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>미매칭 회원 처리</DialogTitle>
         <DialogContent>
-          <Typography>아래 명단은 기존 회원과 매칭되지 않았습니다. 수동 등록이 필요합니다.</Typography>
-          <Box sx={{ mt: 2 }}>
-            <ul>
-              {unmatchedRows.map((row, idx) => (
-                <li key={idx}>{row.name} / {row.gender} / {row.phone} / {row.birthdate}</li>
-              ))}
-            </ul>
-          </Box>
-          <Typography sx={{ mt: 2, color: "red" }}>※ 미매칭 회원은 회원 관리에서 등록 후 다시 업로드하세요.</Typography>
+          <Typography gutterBottom>
+            아래 명단은 기존 회원과 매칭되지 않았습니다. 수동 등록이 필요합니다.
+          </Typography>
+          {unmatchedRows.map((row, idx) => (
+            <Typography key={idx} variant="body2">
+              {row.name} / {row.gender} / {row.phone} / {normalizeDate(row.birthdate)}
+            </Typography>
+          ))}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            ※ 미매칭 회원은 회원 관리에서 등록 후 다시 업로드하세요.
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowUnmatchedDialog(false)}>확인</Button>

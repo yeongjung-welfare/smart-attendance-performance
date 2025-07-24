@@ -1,4 +1,5 @@
 // src/components/AttendancePerformanceForm.jsx
+
 import React, { useState, useEffect } from "react";
 import {
   TextField, Button, Paper, Typography, Alert,
@@ -8,6 +9,10 @@ import {
 import { getSubProgramMembers } from "../services/subProgramMemberAPI";
 import { getStructureBySubProgram } from "../services/teamSubProgramMapAPI";
 import { getProgramSessionsForMonth } from "../services/attendancePerformanceAPI";
+import { normalizeDate, getCurrentKoreanDate } from "../utils/dateUtils"; // ✅ 추가
+import { useUser } from "../hooks/useUser";  // ✅ 추가
+import { useUserRole } from "../hooks/useUserRole";  // ✅ 추가
+import { getTeacherSubPrograms } from "../services/teacherSubProgramMapAPI";  // ✅ 추가
 
 function AttendancePerformanceForm({
   mode = "attendance",
@@ -35,13 +40,39 @@ function AttendancePerformanceForm({
   const [availableMembers, setAvailableMembers] = useState([]);
 
   // 세부사업명 목록 추출
-  const allSubs = [];
-  if (structure && typeof structure === "object") {
-    Object.values(structure).forEach(item => {
-      if (item && item.세부사업명) allSubs.push(item.세부사업명);
-    });
-  }
-  const subPrograms = Array.from(new Set(allSubs)).sort();
+  c  // ✅ 강사별 세부사업 필터링
+  const [subPrograms, setSubPrograms] = useState([]);
+  const { user } = useUser();
+  const { role } = useUserRole();
+
+  // 강사별 세부사업 필터링
+  useEffect(() => {
+    const loadSubPrograms = async () => {
+      if (role === "teacher" && user?.email) {
+        // 강사는 담당 세부사업만 조회
+        try {
+          const teacherPrograms = await getTeacherSubPrograms(user.email);
+          const programNames = teacherPrograms.map(p => p.subProgramName || p.세부사업명);
+          setSubPrograms(programNames);
+          console.log("✅ 강사 담당 세부사업:", programNames);
+        } catch (error) {
+          console.error("강사 세부사업 조회 오류:", error);
+          setSubPrograms([]);
+        }
+      } else {
+        // 관리자는 모든 세부사업 조회
+        const allSubs = [];
+        if (structure && typeof structure === "object") {
+          Object.values(structure).forEach(item => {
+            if (item && item.세부사업명) allSubs.push(item.세부사업명);
+          });
+        }
+        setSubPrograms(Array.from(new Set(allSubs)).sort());
+      }
+    };
+    
+    loadSubPrograms();
+  }, [role, user, structure]);
 
   // ✅ 세부사업명 변경 시 회원 목록 로드
   useEffect(() => {
@@ -112,7 +143,6 @@ function AttendancePerformanceForm({
   const calcSessions = async (세부사업명, 이용자명, 날짜) => {
     if (!세부사업명 || !날짜) return 1;
     const yearMonth = 날짜.slice(0, 7);
-    
     try {
       const sessions = await getProgramSessionsForMonth(세부사업명, yearMonth);
       if (sessions && Number.isFinite(sessions)) return sessions;
@@ -122,6 +152,7 @@ function AttendancePerformanceForm({
         const count = await getAttendanceCountForMonth(세부사업명, 이용자명, yearMonth);
         return count + 1;
       }
+
       return 1;
     } catch {
       return 1;
@@ -156,22 +187,26 @@ function AttendancePerformanceForm({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!formData.이용자명 || !formData.날짜 || !formData.세부사업명) {
       setAlert({ type: "warning", message: "이용자명, 날짜, 세부사업명은 필수입니다." });
       return;
     }
 
     try {
+      // ✅ 날짜 정규화 추가
+      const normalizedDate = normalizeDate(formData.날짜);
+      
       // 횟수 자동계산
       let 횟수 = formData.횟수;
       if (mode === "attendance") {
-        횟수 = await calcSessions(formData.세부사업명, formData.이용자명, formData.날짜);
+        횟수 = await calcSessions(formData.세부사업명, formData.이용자명, normalizedDate);
       }
 
       if (mode === "attendance") {
         await onSubmit({
           이용자명: formData.이용자명,
-          날짜: formData.날짜,
+          날짜: normalizedDate, // ✅ 정규화된 날짜 사용
           세부사업명: formData.세부사업명,
           성별: formData.성별,
           출석여부: formData.출석여부,
@@ -186,7 +221,7 @@ function AttendancePerformanceForm({
       } else {
         await onSubmit({
           이용자명: formData.이용자명,
-          날짜: formData.날짜,
+          날짜: normalizedDate, // ✅ 정규화된 날짜 사용
           세부사업명: formData.세부사업명,
           성별: formData.성별,
           "내용(특이사항)": formData["내용(특이사항)"],
@@ -232,7 +267,7 @@ function AttendancePerformanceForm({
       console.log("✅ initialData 업데이트:", initialData);
       setFormData({
         이용자명: initialData?.이용자명 || "",
-        날짜: initialData?.날짜 || "",
+        날짜: initialData?.날짜 ? normalizeDate(initialData.날짜) : "", // ✅ 날짜 정규화 추가
         세부사업명: initialData?.세부사업명 || "",
         성별: initialData?.성별 || "",
         "내용(특이사항)": initialData?.["내용(특이사항)"] || "",
@@ -248,8 +283,8 @@ function AttendancePerformanceForm({
   }, [initialData]);
 
   return (
-    <Paper elevation={3} sx={{ p: 3, maxWidth: 600, mx: "auto" }}>
-      <Typography variant="h6" gutterBottom>
+    <Paper sx={{ p: 3 }}>
+      <Typography variant="h5" gutterBottom>
         {mode === "attendance" ? "단건 출석 등록" : "실적 수정"}
       </Typography>
 
@@ -259,20 +294,21 @@ function AttendancePerformanceForm({
         </Alert>
       )}
 
-      <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
+      <Box component="form" onSubmit={handleSubmit}>
         <Grid container spacing={2}>
           {/* ✅ 세부사업명 필드 - 수정 모드에서도 표시 */}
           <Grid item xs={12}>
-            <FormControl fullWidth required>
+            <FormControl fullWidth>
               <InputLabel>세부사업명</InputLabel>
               <Select
                 value={formData.세부사업명}
                 onChange={handleChange("세부사업명")}
                 label="세부사업명"
-                disabled={mode === "performance"} // ✅ 수정 모드에서는 읽기 전용
               >
                 {subPrograms.map(sp => (
-                  <MenuItem key={sp} value={sp}>{sp}</MenuItem>
+                  <MenuItem key={sp} value={sp}>
+                    {sp}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -281,45 +317,59 @@ function AttendancePerformanceForm({
           {/* 이용자명 필드 */}
           <Grid item xs={12} sm={6}>
             {mode === "attendance" ? (
-              <TextField
-                fullWidth
-                required
-                label="이용자명"
-                value={formData.이용자명}
-                onChange={handleUserNameChange}
-                list="member-names"
-              />
+              <FormControl fullWidth>
+                <InputLabel>이용자명</InputLabel>
+                <Select
+                  value={formData.이용자명}
+                  onChange={handleUserNameChange}
+                  label="이용자명"
+                >
+                  {availableMembers.map(member => (
+                    <MenuItem key={member.id} value={member.이용자명}>
+                      {member.이용자명}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             ) : (
               <TextField
                 fullWidth
-                required
                 label="이용자명"
                 value={formData.이용자명}
-                InputProps={{ readOnly: true }}
-                variant="filled"
+                onChange={handleChange("이용자명")}
+                disabled={mode === "performance"}
               />
             )}
-            
-            {mode === "attendance" && (
-              <datalist id="member-names">
-                {availableMembers.map(member => (
-                  <option key={member.id} value={member.이용자명} />
-                ))}
-              </datalist>
-            )}
           </Grid>
+
+          {mode === "attendance" && (
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>회원 선택</InputLabel>
+                <Select
+                  value=""
+                  onChange={handleUserNameChange}
+                  label="회원 선택"
+                >
+                  {availableMembers.map(member => (
+                    <MenuItem key={member.id} value={member.이용자명}>
+                      {member.이용자명} ({member.성별 || '-'})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          )}
 
           {/* 날짜 필드 */}
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              required
-              type="date"
               label="날짜"
+              type="date"
               value={formData.날짜}
               onChange={handleChange("날짜")}
               InputLabelProps={{ shrink: true }}
-              disabled={mode === "performance"} // ✅ 수정 모드에서는 읽기 전용
             />
           </Grid>
 
@@ -339,13 +389,12 @@ function AttendancePerformanceForm({
           </Grid>
 
           {/* 고유아이디 필드 (읽기 전용) */}
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12}>
             <TextField
               fullWidth
               label="고유아이디"
               value={formData.고유아이디}
-              InputProps={{ readOnly: true }}
-              variant="filled"
+              disabled
             />
           </Grid>
 
@@ -360,36 +409,6 @@ function AttendancePerformanceForm({
                   onChange={handleChange("내용(특이사항)")}
                   multiline
                   rows={3}
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="유료무료"
-                  value={formData.유료무료}
-                  InputProps={{ readOnly: true }}
-                  variant="filled"
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="기능"
-                  value={formData.기능}
-                  InputProps={{ readOnly: true }}
-                  variant="filled"
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="단위사업명"
-                  value={formData.단위사업명}
-                  InputProps={{ readOnly: true }}
-                  variant="filled"
                 />
               </Grid>
             </>
@@ -407,17 +426,19 @@ function AttendancePerformanceForm({
               label="출석"
             />
           </Grid>
-        </Grid>
 
-        {/* 버튼 영역 */}
-        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, mt: 3 }}>
-          <Button onClick={onClose} variant="outlined">
-            취소
-          </Button>
-          <Button type="submit" variant="contained">
-            {mode === "attendance" ? "등록하기" : "수정하기"}
-          </Button>
-        </Box>
+          {/* 버튼 영역 */}
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+              <Button onClick={onClose} variant="outlined">
+                취소
+              </Button>
+              <Button type="submit" variant="contained">
+                {mode === "attendance" ? "등록하기" : "수정하기"}
+              </Button>
+            </Box>
+          </Grid>
+        </Grid>
       </Box>
     </Paper>
   );

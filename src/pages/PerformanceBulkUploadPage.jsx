@@ -275,26 +275,42 @@ function PerformanceEditModal({ open, onClose, onSave, initialData }) {
       
       <DialogContent sx={{ mt: 2, px: 3 }}>
         <Grid container spacing={3}>
-          {/* 날짜 */}
-          <Grid item xs={12} sm={6}>
-            <TextField
-              fullWidth
-              label="날짜"
-              name="날짜"
-              type="date"
-              value={form.날짜}
-              onChange={handleChange}
-              error={!!errors.날짜}
-              helperText={errors.날짜}
-              InputLabelProps={{ shrink: true }}
-              required
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 2
-                }
-              }}
-            />
-          </Grid>
+          {/* 날짜 필드 개선 */}
+<Grid item xs={12} sm={6}>
+  <TextField
+    name="날짜"
+    label="날짜"
+    type="date"
+    value={form.날짜}
+    onChange={handleChange}
+    fullWidth
+    size="medium"
+    error={!!errors.날짜}
+    helperText={errors.날짜}
+    InputLabelProps={{
+      shrink: true,
+      sx: { fontSize: '1rem', fontWeight: 500 }
+    }}
+    InputProps={{
+      sx: {
+        fontSize: '1rem',
+        '& input': {
+          padding: '12px 14px', // 패딩 증가로 클릭 영역 확대
+          fontSize: '1rem',
+          minWidth: '140px' // 최소 너비 보장
+        }
+      }
+    }}
+    sx={{
+      '& .MuiFormLabel-root': {
+        fontSize: '1rem'
+      },
+      '& .MuiInputBase-root': {
+        minHeight: 56 // 높이 보장
+      }
+    }}
+  />
+</Grid>
 
           {/* ✅ 완전히 수정된 팀명 드롭다운 */}
           <Grid item xs={12} sm={6}>

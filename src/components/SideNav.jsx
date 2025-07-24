@@ -10,100 +10,168 @@ function SideNav({ role, onLogout }) {
   };
 
   return (
-    <nav className="w-56 bg-white border-r hidden md:block">
-      <div className="p-6 font-bold text-lg">메뉴</div>
-      <ul className="space-y-2 px-4">
-        {/* 공통 */}
-        <li className="mt-4 font-semibold text-gray-600">공통</li>
-        <li>
-          <Link to="/dashboard" className="block py-2 hover:bg-blue-100 rounded ml-2">대시보드</Link>
-        </li>
+    <div className="w-64 bg-white shadow-lg h-full flex flex-col">
+      <div className="p-6 border-b">
+        <h2 className="text-xl font-semibold text-gray-800">메뉴</h2>
+      </div>
 
-        {/* 이용자 관리 */}
+      <nav className="flex-1 p-4">
+        {/* 공통 */}
+        <div className="mb-4">
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+            공통
+          </h3>
+          <Link
+            to="/dashboard"
+            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+          >
+            대시보드
+          </Link>
+        </div>
+
+        {/* 이용자 관리 - 관리자/매니저만 */}
         {(role === "admin" || role === "manager") && (
-          <>
-            <li className="mt-4 font-semibold text-gray-600">이용자 관리</li>
-            <li>
-              <Link to="/members" className="block py-2 hover:bg-blue-100 rounded ml-2">전체 이용자 관리</Link>
-            </li>
-            <li>
-              <Link to="/subprogram-members" className="block py-2 hover:bg-blue-100 rounded ml-2">세부사업별 이용자 관리</Link>
-            </li>
-          </>
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+              이용자 관리
+            </h3>
+            <Link
+              to="/members"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+            >
+              전체 이용자 관리
+            </Link>
+            <Link
+              to="/subprogram-members"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+            >
+              세부사업별 이용자 관리
+            </Link>
+          </div>
         )}
 
         {/* 출석·실적 관리 */}
         {(role === "admin" || role === "manager" || role === "teacher") && (
-          <>
-            <li className="mt-4 font-semibold text-gray-600">출석·실적 관리</li>
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+              출석·실적 관리
+            </h3>
             {(role === "admin" || role === "manager") && (
-              <li>
-                <Link to="/attendance" className="block py-2 hover:bg-blue-100 rounded ml-2">출석·실적 등록 및 관리</Link>
-              </li>
+              <Link
+                to="/attendance"
+                className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+              >
+                출석·실적 등록 및 관리
+              </Link>
             )}
             {role === "teacher" && (
-              <li>
-                <Link to="/attendance-teacher" className="block py-2 hover:bg-blue-100 rounded ml-2">출석·실적 등록 및 관리</Link>
-              </li>
+              <>
+                <Link
+                  to="/attendance-teacher"
+                  className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                >
+                  출석·실적 등록 및 관리
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200"
+                >
+                  로그아웃
+                </button>
+              </>
             )}
             {(role === "admin" || role === "manager") && (
-              <li>
-                <Link to="/bulk-performance-upload" className="block py-2 hover:bg-blue-100 rounded ml-2">대량 실적 업로드</Link>
-              </li>
+              <Link
+                to="/bulk-performance-upload"
+                className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+              >
+                대량 실적 업로드
+              </Link>
             )}
-            {(role === "admin" || role === "manager" || role === "teacher") && (
-              <li>
-                <Link to="/performance-stats" className="block py-2 hover:bg-blue-100 rounded ml-2">실적 통계/조회</Link>
-              </li>
+            {(role === "admin" || role === "manager") && (
+              <Link
+                to="/performance-stats"
+                className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+              >
+                실적 통계/조회
+              </Link>
             )}
-          </>
+          </div>
         )}
 
-        {/* 매칭 관리 */}
+        {/* 매칭 관리 - 관리자/매니저만 */}
         {(role === "admin" || role === "manager") && (
-          <>
-            <li className="mt-4 font-semibold text-gray-600">매칭 관리</li>
-            <li>
-              <Link to="/team-map" className="block py-2 hover:bg-blue-100 rounded ml-2">팀-세부사업 매칭 관리</Link>
-            </li>
-            <li>
-              <Link to="/teacher-map" className="block py-2 hover:bg-blue-100 rounded ml-2">강사-세부사업 매칭 관리</Link>
-            </li>
-          </>
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+              매칭 관리
+            </h3>
+            <Link
+              to="/team-map"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+            >
+              팀-세부사업 매칭 관리
+            </Link>
+            <Link
+              to="/teacher-map"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+            >
+              강사-세부사업 매칭 관리
+            </Link>
+          </div>
         )}
 
         {/* 관리자 전용 */}
         {role === "admin" && (
-          <>
-            <li className="mt-4 font-semibold text-gray-600">관리자 전용</li>
-            <li>
-              <Link to="/admin" className="block py-2 hover:bg-blue-100 rounded ml-2">승인관리</Link>
-            </li>
-          </>
-        )}
-
-        {/* 로그아웃 또는 로그인/회원가입 */}
-        {role ? (
-          <li>
+          <div className="mb-4">
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">
+              관리자 전용
+            </h3>
+            <Link
+              to="/admin"
+              className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+            >
+              승인관리
+            </Link>
             <button
               onClick={handleLogout}
-              className="block w-full text-left py-2 hover:bg-blue-100 rounded text-red-600"
+              className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200"
             >
               로그아웃
             </button>
-          </li>
-        ) : (
-          <>
-            <li>
-              <Link to="/login" className="block py-2 hover:bg-blue-100 rounded">로그인</Link>
-            </li>
-            <li>
-              <Link to="/signup" className="block py-2 hover:bg-blue-100 rounded">회원가입</Link>
-            </li>
-          </>
+          </div>
         )}
-      </ul>
-    </nav>
+
+        {/* 매니저용 로그아웃 */}
+        {role === "manager" && (
+          <div className="mb-4">
+            <button
+              onClick={handleLogout}
+              className="block w-full text-left px-3 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-200"
+            >
+              로그아웃
+            </button>
+          </div>
+        )}
+      </nav>
+
+      {/* 비로그인 상태: 로그인/회원가입 */}
+      {!role && (
+        <div className="p-4 border-t">
+          <Link
+            to="/login"
+            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 mb-2"
+          >
+            로그인
+          </Link>
+          <Link
+            to="/signup"
+            className="block px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+          >
+            회원가입
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 

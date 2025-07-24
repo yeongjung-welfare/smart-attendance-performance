@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import AppBar from "./components/AppBar";
 import SideNav from "./components/SideNav";
 import MobileNav from "./components/MobileNav";
 import { StatsProvider } from "./contexts/StatsContext";
-import ErrorBoundary from "./components/ErrorBoundary"; // ✅ 추가
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // 📄 페이지
 import Dashboard from "./pages/Dashboard";
@@ -33,6 +33,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -45,23 +46,29 @@ function App() {
             setRole(userRole);
           } else {
             setRole(null);
-            navigate("/login");
+            if (!["/login", "/signup"].includes(location.pathname)) {
+              navigate("/login");
+            }
           }
         } catch (err) {
           console.error("Firestore 오류:", err);
           setError("사용자 역할을 가져오지 못했습니다. 다시 로그인해 주세요.");
           setRole(null);
-          navigate("/login");
+          if (!["/login", "/signup"].includes(location.pathname)) {
+            navigate("/login");
+          }
         }
       } else {
         setRole(null);
-        navigate("/login");
+        if (!["/login", "/signup"].includes(location.pathname)) {
+          navigate("/login");
+        }
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   const handleLogout = () => {
     auth.signOut().then(() => {
@@ -80,27 +87,49 @@ function App() {
     return <div className="flex items-center justify-center h-screen text-red-500">{error}</div>;
   }
 
+  // 로그인/회원가입 페이지는 별도 레이아웃 처리
+  if (["/login", "/signup"].includes(location.pathname)) {
+    return (
+      <ErrorBoundary>
+        <div className="min-h-screen bg-gray-50">
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+          </Routes>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
+  // 로그인하지 않은 사용자는 로그인 페이지로 리다이렉트
+  if (!role) {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
     <ErrorBoundary>
       <div className="flex min-h-screen bg-gray-50">
         <StatsProvider>
+          {/* 데스크톱 사이드 네비게이션 */}
           <div className="hidden md:block">
             <SideNav role={role} onLogout={handleLogout} />
           </div>
-          <div className="block md:hidden">
-            <MobileNav role={role} onLogout={handleLogout} />
-          </div>
+
           <div className="flex-1 flex flex-col">
+            {/* AppBar - 항상 표시 */}
             <AppBar role={role} onLogout={handleLogout} />
+            
             <main className="flex-1 p-4">
               <Routes>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Dashboard role={role} />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/signup" element={<SignupPage />} />
+                
+                {/* 승인 대기 사용자용 */}
                 {role === "pending" && (
                   <Route path="/pending" element={<PendingPage />} />
                 )}
+                
+                {/* 관리자/매니저 전용 라우트 */}
                 {(role === "admin" || role === "manager") && (
                   <>
                     <Route path="/members" element={<MemberManage />} />
@@ -111,20 +140,28 @@ function App() {
                     <Route path="/team-map" element={<TeamSubProgramMapManage />} />
                     <Route path="/teacher-map" element={<TeacherSubProgramMapManage />} />
                     <Route path="/bulk-performance-upload" element={<PerformanceBulkUploadPage />} />
-                    {role === "admin" && (
-                      <Route path="/admin" element={<AdminPanel />} />
-                    )}
                   </>
                 )}
+                
+                {/* 관리자 전용 라우트 */}
+                {role === "admin" && (
+                  <Route path="/admin" element={<AdminPanel />} />
+                )}
+                
+                {/* 강사 전용 라우트 */}
                 {role === "teacher" && (
                   <>
                     <Route path="/attendance-teacher" element={<AttendanceTeacherPage />} />
                     <Route path="/performance-teacher" element={<PerformanceTeacherPage />} />
                   </>
                 )}
+                
+                {/* 일반 사용자 전용 라우트 */}
                 {role === "user" && (
                   <Route path="/my-performance" element={<MyPerformancePage />} />
                 )}
+                
+                {/* 404 페이지 */}
                 <Route path="*" element={<div className="text-center">404: 페이지를 찾을 수 없습니다.</div>} />
               </Routes>
             </main>

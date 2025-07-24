@@ -16,26 +16,119 @@ import {
 import { db } from "../firebase";
 import generateUniqueId from "../utils/generateUniqueId";
 import { getAgeGroup } from "../utils/ageGroup";
+import { normalizeDate, toFirebaseDate, getCurrentKoreanDate, extractDateFromFirebase } from "../utils/dateUtils";
 
 const memberCollection = collection(db, "Members");
 
-// 전체 회원 조회 (재시도 로직 추가)
+// ✅ 전화번호 정규화 함수 추가
+function normalizePhone(phone) {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  }
+  return phone;
+}
+
+// ✅ 안전한 날짜 처리 함수 (시간대 문제 완전 해결)
+function safeBirthdateExtract(birthdate) {
+  if (!birthdate) return "";
+  
+  try {
+    // Firebase Timestamp 처리
+    if (birthdate && typeof birthdate.toDate === 'function') {
+      const jsDate = birthdate.toDate();
+      // 로컬 시간으로 변환하여 날짜 추출
+      const year = jsDate.getFullYear();
+      const month = String(jsDate.getMonth() + 1).padStart(2, '0');
+      const day = String(jsDate.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // Date 객체 처리
+    if (birthdate instanceof Date) {
+      const year = birthdate.getFullYear();
+      const month = String(birthdate.getMonth() + 1).padStart(2, '0');
+      const day = String(birthdate.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // 문자열 처리
+    if (typeof birthdate === 'string') {
+      return normalizeDate(birthdate);
+    }
+
+    return "";
+  } catch (error) {
+    console.warn("생년월일 추출 오류:", error, birthdate);
+    return "";
+  }
+}
+
+// ✅ 전체 회원 조회
 export async function getAllMembers(retries = 3) {
   try {
+    console.log("🔍 회원 데이터 조회 시작");
     const snapshot = await getDocs(memberCollection);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const members = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      let birthdateStr = "";
+      
+      if (data.birthdate !== null && data.birthdate !== undefined) {
+        birthdateStr = safeBirthdateExtract(data.birthdate);
+      }
+
+      let calculatedAgeGroup = "";
+      if (birthdateStr && birthdateStr.length >= 4) {
+        const birthYear = birthdateStr.substring(0, 4);
+        calculatedAgeGroup = getAgeGroup(birthYear);
+      }
+
+      const processedData = {
+        id: doc.id,
+        ...data,
+        birthdate: birthdateStr || "",
+        registrationDate: safeBirthdateExtract(data.registrationDate) || "",
+        ageGroup: (data.ageGroup && data.ageGroup !== "") ? data.ageGroup : calculatedAgeGroup,
+        address: data.address || "",
+        district: data.district || "",
+        disability: data.disability || "",
+        note: data.note || "",
+        phone: normalizePhone(data.phone) // ✅ 전화번호 정규화 추가
+      };
+      
+      console.log("📅 회원 데이터 처리:", {
+        이름: data.name,
+        원본생년월일: data.birthdate,
+        변환생년월일: birthdateStr,
+        기존연령대: data.ageGroup,
+        계산연령대: calculatedAgeGroup,
+        최종연령대: processedData.ageGroup,
+        원본전화번호: data.phone,
+        정규화전화번호: processedData.phone,
+        주소: processedData.address,
+        행정동: processedData.district
+      });
+      
+      return processedData;
+    });
+    
+    console.log(`✅ 총 ${members.length}명 회원 데이터 로드 완료`);
+    return members;
   } catch (error) {
     if (retries > 0 && error.code === "unavailable") {
       console.warn("네트워크 문제 발생, 재시도 중...", retries);
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기
+      await new Promise(resolve => setTimeout(resolve, 1000));
       return getAllMembers(retries - 1);
     }
+
+    console.error("❌ 회원 데이터 조회 실패:", error);
     handlePermissionError(error, "회원정보에 접근 권한이 없습니다.");
     throw error;
   }
 }
 
-// ✅ 새로운 고급 검색 함수
+// ✅ 고급 검색 함수
 export async function searchMembers(searchOptions = {}) {
   try {
     const {
@@ -52,45 +145,57 @@ export async function searchMembers(searchOptions = {}) {
     let q = memberCollection;
     const conditions = [];
 
-    // 성별 필터
     if (gender) {
       conditions.push(where("gender", "==", gender));
     }
 
-    // 소득구분 필터
     if (incomeType) {
       conditions.push(where("incomeType", "==", incomeType));
     }
 
-    // 장애유무 필터
     if (disability) {
       conditions.push(where("disability", "==", disability));
     }
 
-    // 행정동 필터 (부분 일치는 클라이언트에서 처리)
     if (district) {
       conditions.push(where("district", "==", district));
     }
 
-    // 조건들을 AND로 결합
     if (conditions.length > 0) {
       q = query(q, and(...conditions));
     }
 
-    // 정렬 및 페이지네이션
     q = query(q, orderBy("registrationDate", "desc"));
-    
     if (searchLimit) {
       q = query(q, limit(searchLimit));
     }
 
     const snapshot = await getDocs(q);
-    let results = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    let results = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const birthdateStr = safeBirthdateExtract(data.birthdate);
+      let calculatedAgeGroup = "";
+      
+      if (birthdateStr && birthdateStr.length >= 4) {
+        calculatedAgeGroup = getAgeGroup(birthdateStr.substring(0, 4));
+      }
 
-    // 클라이언트 측 텍스트 검색 (이름, 연락처, 주소 등)
+      return {
+        id: doc.id,
+        ...data,
+        birthdate: birthdateStr || "",
+        registrationDate: safeBirthdateExtract(data.registrationDate) || "",
+        ageGroup: (data.ageGroup && data.ageGroup !== "") ? data.ageGroup : calculatedAgeGroup,
+        address: data.address || "",
+        district: data.district || "",
+        disability: data.disability || "",
+        phone: normalizePhone(data.phone) // ✅ 전화번호 정규화 추가
+      };
+    });
+
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase().trim();
-      results = results.filter(member => 
+      results = results.filter(member =>
         (member.name && member.name.toLowerCase().includes(searchLower)) ||
         (member.phone && member.phone.includes(searchTerm.trim())) ||
         (member.id && member.id.toLowerCase().includes(searchLower)) ||
@@ -99,24 +204,12 @@ export async function searchMembers(searchOptions = {}) {
       );
     }
 
-    // 연령대 필터 (클라이언트 측 처리)
     if (ageGroup) {
       results = results.filter(member => {
         const birth = member.birthdate;
         if (!birth) return false;
-        
         try {
-          const birthDate = new Date(birth);
-          if (isNaN(birthDate)) return false;
-          
-          const today = new Date();
-          let age = today.getFullYear() - birthDate.getFullYear();
-          const m = today.getMonth() - birthDate.getMonth();
-          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-          }
-
-          const memberAgeGroup = getAgeGroupFromAge(age);
+          const memberAgeGroup = getAgeGroup(birth.substring(0, 4));
           return memberAgeGroup === ageGroup;
         } catch (e) {
           return false;
@@ -131,24 +224,27 @@ export async function searchMembers(searchOptions = {}) {
   }
 }
 
-// ✅ 연령대 계산 헬퍼 함수
-function getAgeGroupFromAge(age) {
-  if (age < 10) return "0~9세";
-  if (age < 20) return "10대";
-  if (age < 30) return "20대";
-  if (age < 40) return "30대";
-  if (age < 50) return "40대";
-  if (age < 60) return "50대";
-  if (age < 70) return "60대";
-  return "70세 이상";
-}
-
 // ✅ 검색 통계 함수
 export async function getMemberStats() {
   try {
     const snapshot = await getDocs(memberCollection);
-    const members = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    
+    const members = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const birthdateStr = safeBirthdateExtract(data.birthdate);
+      let calculatedAgeGroup = "";
+      
+      if (birthdateStr && birthdateStr.length >= 4) {
+        calculatedAgeGroup = getAgeGroup(birthdateStr.substring(0, 4));
+      }
+
+      return {
+        id: doc.id,
+        ...data,
+        birthdate: birthdateStr || "",
+        ageGroup: (data.ageGroup && data.ageGroup !== "") ? data.ageGroup : calculatedAgeGroup
+      };
+    });
+
     const stats = {
       total: members.length,
       byGender: {
@@ -163,29 +259,14 @@ export async function getMemberStats() {
       byAgeGroup: {}
     };
 
-    // 소득구분별 통계
     ["일반", "기초수급", "차상위", "국가유공자"].forEach(type => {
       stats.byIncomeType[type] = members.filter(m => m.incomeType === type).length;
     });
 
-    // 연령대별 통계
     members.forEach(member => {
       if (member.birthdate) {
-        try {
-          const birthDate = new Date(member.birthdate);
-          if (!isNaN(birthDate)) {
-            const today = new Date();
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const m = today.getMonth() - birthDate.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-              age--;
-            }
-            const ageGroup = getAgeGroupFromAge(age);
-            stats.byAgeGroup[ageGroup] = (stats.byAgeGroup[ageGroup] || 0) + 1;
-          }
-        } catch (e) {
-          // 날짜 파싱 오류 무시
-        }
+        const ageGroup = getAgeGroup(member.birthdate.substring(0, 4));
+        stats.byAgeGroup[ageGroup] = (stats.byAgeGroup[ageGroup] || 0) + 1;
       }
     });
 
@@ -201,61 +282,120 @@ export async function getMembersBySubProgram(subProgramName) {
   try {
     const q = query(memberCollection, where("subProgram", "==", subProgramName));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const birthdateStr = safeBirthdateExtract(data.birthdate);
+      let calculatedAgeGroup = "";
+      
+      if (birthdateStr && birthdateStr.length >= 4) {
+        calculatedAgeGroup = getAgeGroup(birthdateStr.substring(0, 4));
+      }
+
+      return {
+        id: doc.id,
+        ...data,
+        birthdate: birthdateStr || "",
+        ageGroup: (data.ageGroup && data.ageGroup !== "") ? data.ageGroup : calculatedAgeGroup,
+        phone: normalizePhone(data.phone) // ✅ 전화번호 정규화 추가
+      };
+    });
   } catch (error) {
     handlePermissionError(error, "세부사업별 회원 조회 오류");
     throw error;
   }
 }
 
-// 중복 회원 체크
+// ✅ 수정된 중복 회원 체크 함수
 export async function checkDuplicateMember({ name, birthdate, phone }) {
   try {
+    const normalizedBirthdate = normalizeDate(birthdate);
+    const normalizedPhone = normalizePhone(phone);
+    
+    console.log("🔍 중복 체크:", {
+      name,
+      originalBirthdate: birthdate,
+      normalizedBirthdate,
+      originalPhone: phone,
+      normalizedPhone
+    });
+
     const q = query(
       memberCollection,
       where("name", "==", name),
-      where("birthdate", "==", birthdate),
-      where("phone", "==", phone)
+      where("phone", "==", normalizedPhone)
     );
+
     const snapshot = await getDocs(q);
-    return !snapshot.empty;
+    
+    for (const docSnap of snapshot.docs) {
+      const existingData = docSnap.data();
+      const existingBirthdate = safeBirthdateExtract(existingData.birthdate);
+      
+      console.log("🔍 기존 데이터 비교:", {
+        existingBirthdate,
+        normalizedBirthdate,
+        match: existingBirthdate === normalizedBirthdate
+      });
+      
+      if (existingBirthdate === normalizedBirthdate) {
+        return true;
+      }
+    }
+    
+    return false;
   } catch (error) {
     console.error("중복 체크 오류:", error);
     return false;
   }
 }
 
-// 빈값이 아닌 필드만 기존 데이터에 덮어씌우는 업데이트 함수
+// 빈값이 아닌 필드만 업데이트
 export async function updateMemberWithNonEmptyFields(member) {
   try {
+    const normalizedBirthdate = normalizeDate(member.birthdate);
+    const normalizedPhone = normalizePhone(member.phone);
+    
     const q = query(
       memberCollection,
       where("name", "==", member.name),
-      where("birthdate", "==", member.birthdate),
-      where("phone", "==", member.phone)
+      where("phone", "==", normalizedPhone)
     );
+
     const snapshot = await getDocs(q);
-    if (snapshot.empty) return false;
-
-    const docSnap = snapshot.docs[0];
-    const existing = docSnap.data();
-    const updatedData = { ...existing };
-
-    Object.keys(member).forEach((key) => {
-      if (member[key] !== "" && member[key] !== undefined) {
-        updatedData[key] = member[key];
+    
+    for (const docSnap of snapshot.docs) {
+      const existing = docSnap.data();
+      const existingBirthdate = safeBirthdateExtract(existing.birthdate);
+      
+      if (existingBirthdate === normalizedBirthdate) {
+        const updatedData = { ...existing };
+        
+        Object.keys(member).forEach((key) => {
+          if (member[key] !== "" && member[key] !== undefined) {
+            if (key === 'birthdate' || key === 'registrationDate') {
+              // ✅ 날짜는 문자열로 저장 (시간대 문제 해결)
+              updatedData[key] = normalizeDate(member[key]);
+            } else if (key === 'phone') {
+              updatedData[key] = normalizePhone(member[key]);
+            } else {
+              updatedData[key] = member[key];
+            }
+          }
+        });
+        
+        await updateDoc(doc(db, "Members", docSnap.id), updatedData);
+        return true;
       }
-    });
-
-    await updateDoc(doc(db, "Members", docSnap.id), updatedData);
-    return true;
+    }
+    
+    return false;
   } catch (error) {
     console.error("빈값 제외 업데이트 오류:", error);
     return false;
   }
 }
 
-// 회원 등록
+// ✅ 수정된 회원 등록 함수
 export async function registerMember(member) {
   try {
     const isDuplicate = await checkDuplicateMember(member);
@@ -263,52 +403,156 @@ export async function registerMember(member) {
       return { success: false, reason: "duplicate" };
     }
 
-    const ageGroup = member.birthdate ? getAgeGroup(member.birthdate.substring(0, 4)) : "";
+    const birthdateStr = normalizeDate(member.birthdate);
+    const normalizedPhone = normalizePhone(member.phone);
+    const registrationDate = member.registrationDate || getCurrentKoreanDate();
+    
+    let ageGroup = "";
+    if (birthdateStr && birthdateStr.length >= 4) {
+      ageGroup = getAgeGroup(birthdateStr.substring(0, 4));
+    } else {
+      ageGroup = "미상";
+    }
+
     const fullMember = {
       userId: generateUniqueId(),
       name: member.name || "",
       gender: member.gender || "",
-      birthdate: member.birthdate || "",
+      birthdate: birthdateStr, // ✅ 문자열로 저장 (시간대 문제 해결)
       ageGroup: ageGroup,
-      phone: member.phone || "",
+      phone: normalizedPhone, // ✅ 정규화된 전화번호 저장
       address: member.address || "",
       district: member.district || "",
       incomeType: member.incomeType || "",
-      disability: member.disability || "",
+      disability: member.disability || "무",
       note: member.note || "",
-      registrationDate: member.registrationDate || new Date().toISOString().split("T")[0]
+      registrationDate: registrationDate
     };
 
-    await addDoc(memberCollection, fullMember);
-    return { success: true };
+    console.log("📝 등록 데이터:", {
+      name: fullMember.name,
+      birthdate: fullMember.birthdate,
+      ageGroup: fullMember.ageGroup,
+      phone: fullMember.phone
+    });
+
+    const docRef = await addDoc(memberCollection, fullMember);
+    return { success: true, userId: fullMember.userId, docId: docRef.id };
   } catch (error) {
     console.error("회원 등록 오류:", error);
     throw error;
   }
 }
 
-// 회원 정보 수정
+// ✅ 수정된 회원 정보 수정 함수
 export async function updateMember(id, updatedData) {
   try {
+    const processedData = { ...updatedData };
+    
+    if (processedData.birthdate) {
+      processedData.birthdate = normalizeDate(processedData.birthdate);
+      const birthdateStr = normalizeDate(processedData.birthdate);
+      if (birthdateStr) {
+        processedData.ageGroup = getAgeGroup(birthdateStr.substring(0, 4));
+      }
+    }
+
+    if (processedData.registrationDate) {
+      processedData.registrationDate = normalizeDate(processedData.registrationDate);
+    }
+    
+    if (processedData.phone) {
+      processedData.phone = normalizePhone(processedData.phone);
+    }
+
     const docRef = doc(db, "Members", id);
-    await updateDoc(docRef, updatedData);
+    await updateDoc(docRef, processedData);
   } catch (error) {
     console.error("회원 수정 오류:", error);
     throw error;
   }
 }
 
-// 회원 삭제 (단일/다중 모두 지원, id만 추출)
+// ✅ 수정된 고급 중복 체크 함수
+export async function checkDuplicateMemberAdvanced({ name, birthdate, phone }) {
+  try {
+    const normalizedBirthdate = normalizeDate(birthdate);
+    const normalizedPhone = normalizePhone(phone);
+    
+    const exactResult = await checkDuplicateMember({ name, birthdate, phone });
+    if (exactResult) {
+      return {
+        isDuplicate: true,
+        confidence: 'high',
+        action: 'block',
+        message: '동일한 이름, 생년월일, 연락처의 회원이 이미 존재합니다.',
+        matches: []
+      };
+    }
+
+    const nameAndBirthQuery = query(
+      memberCollection,
+      where("name", "==", name)
+    );
+    
+    const snapshot = await getDocs(nameAndBirthQuery);
+    const similarMatches = [];
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data();
+      const existingBirthdate = safeBirthdateExtract(data.birthdate);
+      const existingPhone = normalizePhone(data.phone);
+      
+      if (existingBirthdate === normalizedBirthdate && existingPhone !== normalizedPhone) {
+        similarMatches.push({
+          name: data.name,
+          birthdate: existingBirthdate,
+          phone: existingPhone
+        });
+      }
+    }
+
+    if (similarMatches.length > 0) {
+      return {
+        isDuplicate: true,
+        confidence: 'medium',
+        action: 'warn',
+        message: '동일한 이름과 생년월일을 가진 회원이 존재합니다.',
+        matches: similarMatches
+      };
+    }
+
+    return {
+      isDuplicate: false,
+      confidence: 'low',
+      action: 'proceed',
+      message: '',
+      matches: []
+    };
+  } catch (error) {
+    console.error("고급 중복 체크 오류:", error);
+    return {
+      isDuplicate: false,
+      confidence: 'unknown',
+      action: 'proceed',
+      message: '',
+      matches: []
+    };
+  }
+}
+
+// 회원 삭제
 export async function deleteMember(ids) {
   const idList = Array.isArray(ids)
     ? ids
-        .filter(Boolean)
-        .map(item => (typeof item === "object" && item !== null ? item.id : item))
-        .filter(id => typeof id === "string" && id.length > 0)
+      .filter(Boolean)
+      .map(item => (typeof item === "object" && item !== null ? item.id : item))
+      .filter(id => typeof id === "string" && id.length > 0)
     : [ids];
 
   try {
     let deletedCount = 0;
+    
     for (const id of idList) {
       if (!id || typeof id !== "string") {
         console.warn(`유효하지 않은 ID 무시: ${id}`);

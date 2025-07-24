@@ -89,11 +89,30 @@ function MemberSelectModal({ open, onClose, onSelect }) {
   }, [members, search]);
 
   const handleMemberSelect = (member) => {
-    console.log("✅ 선택된 회원:", member);
-    onSelect(member);
-    onClose();
-    setSearch(""); // 검색어 초기화
+  console.log("✅ 선택된 원본 회원:", member);
+  
+  // ✅ SubProgramMemberRegisterForm의 initialData 구조에 맞게 변환
+  const mappedMemberData = {
+    name: member.name,
+    gender: member.gender,
+    birthdate: member.birthdate,
+    phone: member.phone,
+    address: member.address,
+    incomeType: member.incomeType,
+    // 추가 필드들도 매핑
+    이용자명: member.name,
+    성별: member.gender,
+    생년월일: member.birthdate,
+    연락처: member.phone,
+    주소: member.address,
+    소득구분: member.incomeType
   };
+  
+  console.log("🔥 변환된 회원 데이터:", mappedMemberData);
+  onSelect(mappedMemberData);
+  onClose();
+  setSearch(""); // 검색어 초기화
+};
 
   const handleClose = () => {
     onClose();

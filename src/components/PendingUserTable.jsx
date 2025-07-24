@@ -1,9 +1,11 @@
 import React from "react";
 import { Table, TableHead, TableRow, TableCell, TableBody, Button, Chip } from "@mui/material";
+import { extractDateFromFirebase } from "../utils/dateUtils";
 
 const statusLabels = {
   pending: "대기중",
   admin: "관리자 승인",
+  manager: "직원 승인",  // ← 추가
   teacher: "강사 승인",
   rejected: "거절"
 };
@@ -29,7 +31,14 @@ function PendingUserTable({ users = [], status, onApprove, onReject, onCancel })
             <TableRow key={user.id}>
               <TableCell>{user.name || (user.이용자명 ? user.이용자명 : "-")}</TableCell>
               <TableCell>{user.email || "-"}</TableCell>
-              <TableCell>{user.createdAt || (user.업로드일 ? user.업로드일 : "-")}</TableCell>
+              <TableCell>
+  {user.createdAt 
+    ? (typeof user.createdAt === 'object' && user.createdAt.seconds
+        ? extractDateFromFirebase(user.createdAt) 
+        : user.createdAt)
+    : (user.업로드일 ? user.업로드일 : "-")
+  }
+</TableCell>
               <TableCell align="center">
                 {status === "pending" ? (
                   <>
@@ -43,14 +52,23 @@ function PendingUserTable({ users = [], status, onApprove, onReject, onCancel })
                       관리자 승인
                     </Button>
                     <Button
-                      variant="contained"
-                      color="secondary"
-                      size="small"
-                      sx={{ mr: 1 }}
-                      onClick={() => onApprove(user.id, "teacher", user.isNewMember || false)}
-                    >
-                      강사 승인
-                    </Button>
+  variant="contained"
+  color="info"
+  size="small"
+  sx={{ mr: 1 }}
+  onClick={() => onApprove(user.id, "manager", user.isNewMember || false)}
+>
+  직원 승인
+</Button>
+<Button
+  variant="contained"
+  color="secondary"
+  size="small"
+  sx={{ mr: 1 }}
+  onClick={() => onApprove(user.id, "teacher", user.isNewMember || false)}
+>
+  강사 승인
+</Button>
                     <Button
                       variant="outlined"
                       color="error"
@@ -63,18 +81,20 @@ function PendingUserTable({ users = [], status, onApprove, onReject, onCancel })
                 ) : (
                   <>
                     <Chip
-                      label={statusLabels[status]}
-                      color={
-                        status === "admin"
-                          ? "primary"
-                          : status === "teacher"
-                          ? "secondary"
-                          : status === "rejected"
-                          ? "error"
-                          : "default"
-                      }
-                      sx={{ mr: 1 }}
-                    />
+  label={statusLabels[status]}
+  color={
+    status === "admin"
+      ? "primary"
+      : status === "manager"
+      ? "info"              // ← manager 색깔 추가
+      : status === "teacher"
+      ? "secondary"
+      : status === "rejected"
+      ? "error"
+      : "default"
+  }
+  sx={{ mr: 1 }}
+/>
                     {/* 승인/거절 상태에서 취소 버튼 추가 */}
                     <Button
                       variant="outlined"

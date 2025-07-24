@@ -12,7 +12,7 @@ export function getAgeGroup(birthYear, baseYear = 2025) {
 
   const age = baseYear - year;
 
-  if (age <= 9) return "0~9세(영유아)";
+  if (age <= 7) return "0~7세(영유아)";
   if (age <= 19) return "10대";
   if (age <= 29) return "20대";
   if (age <= 39) return "30대";

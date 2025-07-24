@@ -1,10 +1,19 @@
 import React from "react";
 import {
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  useTheme,
+  useMediaQuery
+} from "@mui/material";
+import {
   People as PeopleIcon,
   CheckCircle as CheckCircleIcon,
   HourglassEmpty as HourglassEmptyIcon,
   Apps as AppsIcon,
-  School as SchoolIcon
+  School as SchoolIcon,
+  TrendingUp as TrendingUpIcon
 } from "@mui/icons-material";
 
 // 색상 맵핑 (MUI theme color 기준)
@@ -19,66 +28,105 @@ const colorMap = {
 };
 
 const iconMap = {
-  "전체 회원 수": <PeopleIcon fontSize="inherit" />,
-  "오늘 출석": <CheckCircleIcon fontSize="inherit" />,
-  "승인 대기자": <HourglassEmptyIcon fontSize="inherit" />,
-  "프로그램 수": <AppsIcon fontSize="inherit" />,
-  "강사 수": <SchoolIcon fontSize="inherit" />,
-  "이달 신규등록자": <PeopleIcon fontSize="inherit" />,
-  "인기 세부사업": <AppsIcon fontSize="inherit" />
+  "전체 회원 수": <PeopleIcon />,
+  "오늘 출석자": <CheckCircleIcon />,
+  "승인 대기": <HourglassEmptyIcon />,
+  "전체 프로그램": <AppsIcon />,
+  "이번 달 신규 회원": <SchoolIcon />,
+  "탑구B": <TrendingUpIcon />
 };
 
-function DashboardCard({ title, value, color = "primary" }) {
-  const icon = iconMap[title] || <AppsIcon fontSize="inherit" />;
-  const colorSet = colorMap[color] || colorMap.default;
+function DashboardCard({ title, value, color = "default", icon }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  const selectedColor = colorMap[color] || colorMap.default;
+  const displayIcon = icon || iconMap[title] || <AppsIcon />;
 
   return (
-    <div
-      className="flex-1 min-w-[150px] max-w-[100%] sm:max-w-[240px] bg-white rounded-2xl shadow-md hover:shadow-xl transition-shadow duration-200 p-4"
-      style={{
-        background: colorSet.bg,
-        color: colorSet.text,
-        minWidth: 0,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between"
+    <Card 
+      elevation={2}
+      sx={{
+        height: '100%',
+        minHeight: { xs: 120, sm: 140 },
+        background: `linear-gradient(135deg, ${selectedColor.bg} 0%, ${selectedColor.bg}dd 100%)`,
+        border: `1px solid ${selectedColor.text}20`,
+        borderRadius: 3,
+        transition: 'all 0.3s ease-in-out',
+        '&:hover': {
+          transform: 'translateY(-4px)',
+          boxShadow: `0 8px 24px ${selectedColor.text}20`,
+          '& .card-icon': {
+            transform: 'scale(1.1)',
+          }
+        }
       }}
     >
-      <div className="flex items-center gap-3 mb-2">
-        <div
-          className="flex items-center justify-center rounded-full"
-          style={{
-            background: "#fff",
-            width: 44,
-            height: 44,
-            fontSize: 32,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
-          }}
-        >
-          {icon}
-        </div>
-        <h3
-          className="font-semibold truncate"
-          style={{
-            fontSize: "1.05rem",
-            maxWidth: "110px"
-          }}
-          title={title}
-        >
-          {title}
-        </h3>
-      </div>
-      <p
-        className="font-bold"
-        style={{
-          fontSize: "2.1rem",
-          wordBreak: "break-all",
-          lineHeight: 1.1
+      <CardContent 
+        sx={{ 
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: { xs: 2, sm: 3 },
+          '&:last-child': { 
+            paddingBottom: { xs: 2, sm: 3 }
+          }
         }}
       >
-        {value}
-      </p>
-    </div>
+        {/* 상단: 아이콘과 제목 */}
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'flex-start',
+            mb: 2
+          }}
+        >
+          <Typography
+            variant={isMobile ? "body2" : "subtitle1"}
+            sx={{
+              color: selectedColor.text,
+              fontWeight: 600,
+              lineHeight: 1.3,
+              flex: 1,
+              mr: 1
+            }}
+          >
+            {title}
+          </Typography>
+          
+          <Box
+            className="card-icon"
+            sx={{
+              color: selectedColor.text,
+              opacity: 0.8,
+              transition: 'all 0.3s ease',
+              '& svg': {
+                fontSize: { xs: 28, sm: 32 }
+              }
+            }}
+          >
+            {displayIcon}
+          </Box>
+        </Box>
+
+        {/* 하단: 값 표시 */}
+        <Box>
+          <Typography
+            variant={isMobile ? "h4" : "h3"}
+            sx={{
+              color: selectedColor.text,
+              fontWeight: 700,
+              lineHeight: 1,
+              fontSize: { xs: '1.8rem', sm: '2.2rem', md: '2.5rem' }
+            }}
+          >
+            {typeof value === 'number' ? value.toLocaleString() : value}
+          </Typography>
+        </Box>
+      </CardContent>
+    </Card>
   );
 }
 

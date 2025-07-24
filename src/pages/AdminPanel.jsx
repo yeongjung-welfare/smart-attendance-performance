@@ -12,7 +12,7 @@ import { generateUniqueId } from "../utils/utils"; // 1단계: 고유아이디 �
 // 🔖 탭별 라벨 정의
 const roleLabels = {
   pending: "대기중",
-  staff: "직원 승인",
+  manager: "직원 승인",
   teacher: "강사 승인",
   admin: "관리자",
   rejected: "거절"
@@ -55,20 +55,28 @@ function AdminPanel() {
 
         // ✅ Users 컬렉션에서 전체 사용자 목록 조회
         const usersSnapshot = await getDocs(collection(db, "Users"));
-        const userList = usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const userList = usersSnapshot.docs.map(doc => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    ...data,
+    createdAt: data.createdAt ? data.createdAt : null
+  };
+});
         setUsers(userList);
 
         // ✅ PendingMembers 컬렉션에서 대기 중인 신규 회원 조회 (6단계)
         const pendingQuery = query(collection(db, "PendingMembers"), where("상태", "==", "대기"));
         const unsubscribePending = onSnapshot(pendingQuery, (snapshot) => {
-          const pendingList = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            isNewMember: true // 신규 회원임을 표시
-          }));
+          const pendingList = snapshot.docs.map(doc => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    ...data,
+    createdAt: data.createdAt ? data.createdAt : null,
+    isNewMember: true
+  };
+});
           setPendingMembers(pendingList);
         }, (error) => {
           console.error("대기 회원 조회 오류:", error);
@@ -88,7 +96,9 @@ function AdminPanel() {
 
   // 🔍 현재 탭에 해당하는 사용자만 필터링 (Users + PendingMembers 통합)
   const filteredUsers = tab === "pending"
-    ? [...users.filter(u => u.role === "pending"), ...pendingMembers]
+  ? [...users.filter(u => u.role === "pending"), ...pendingMembers]
+  : tab === "manager" 
+    ? users.filter(u => u.role === "manager")
     : users.filter(u => u.role === tab);
 
   // 👉 승인, 거절, 취소 시 다이얼로그 열기
@@ -167,7 +177,7 @@ function AdminPanel() {
         scrollButtons="auto"
       >
         <Tab label="대기중" value="pending" />
-        <Tab label="직원 승인" value="staff" />
+        <Tab label="직원 승인" value="manager" />
         <Tab label="강사 승인" value="teacher" />
         <Tab label="관리자" value="admin" />
         <Tab label="거절" value="rejected" />

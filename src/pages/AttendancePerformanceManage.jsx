@@ -109,16 +109,44 @@ useEffect(() => {
 }, [userRole, user]);
 
   useEffect(() => {
-    async function loadStructure() {
-      const map = {};
-      for (const sub of allSubPrograms) {
-        const struct = await getStructureBySubProgram(sub) || {};
-        map[sub] = struct;
+  async function loadStructure() {
+    console.log("🔍 programStructureMap 생성 시작:", allSubPrograms);
+    
+    // ✅ 두 가지 구조 모두 생성
+    const flatMap = {}; // 기존 구조 (실적 수정용)
+    const hierarchicalMap = {}; // 계층 구조 (드롭다운용)
+    
+    for (const sub of allSubPrograms) {
+      const struct = await getStructureBySubProgram(sub) || {};
+      
+      // 기존 flat 구조 유지
+      flatMap[sub] = struct;
+      
+      // 계층 구조 생성
+      if (struct.team && struct.unit) {
+        if (!hierarchicalMap[struct.team]) {
+          hierarchicalMap[struct.team] = {};
+        }
+        if (!hierarchicalMap[struct.team][struct.unit]) {
+          hierarchicalMap[struct.team][struct.unit] = [];
+        }
+        if (!hierarchicalMap[struct.team][struct.unit].includes(sub)) {
+          hierarchicalMap[struct.team][struct.unit].push(sub);
+        }
       }
-      setProgramStructureMap(map);
     }
-    loadStructure();
-  }, [allSubPrograms]);
+    
+    console.log("✅ 생성된 flatMap:", flatMap);
+    console.log("✅ 생성된 hierarchicalMap:", hierarchicalMap);
+    
+    // ✅ 두 구조를 모두 포함하는 객체 설정
+    setProgramStructureMap({
+      flat: flatMap,
+      hierarchical: hierarchicalMap
+    });
+  }
+  loadStructure();
+}, [allSubPrograms]);
 
   useEffect(() => {
     if (unsubscribeRef.current) {
@@ -800,15 +828,16 @@ const result = await fetchPerformances(searchFilters);
         <DialogContent>
           {editing && (
             <AttendancePerformanceForm
-              mode="performance"
-              initialData={editing}
-              onSubmit={handleUpdate}
-              onClose={() => {
-                setShowEditModal(false);
-                setEditing(null);
-              }}
-              structure={programStructureMap}
-            />
+  mode="performance"
+  initialData={editing}
+  onSubmit={handleUpdate}
+  onClose={() => {
+    setShowEditModal(false);
+    setEditing(null);
+  }}
+  structure={programStructureMap.hierarchical || {}}
+  flatStructure={programStructureMap.flat || {}}
+/>
           )}
         </DialogContent>
         <DialogActions>
@@ -823,24 +852,41 @@ const result = await fetchPerformances(searchFilters);
         </DialogActions>
       </Dialog>
 
-      {/* 단건 등록 다이얼로그 */}
-      <Dialog
-        open={showForm}
-        onClose={() => setShowForm(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>단건 출석 등록</DialogTitle>
-        <DialogContent>
-          <AttendancePerformanceForm
-            mode="attendance"
-            initialData={{}}
-            onSubmit={handleSingleRegister}
-            onClose={() => setShowForm(false)}
-            structure={programStructureMap}
-          />
-        </DialogContent>
-      </Dialog>
+{/* 단건 등록 다이얼로그 */}
+<Dialog
+  open={showForm}
+  onClose={() => setShowForm(false)}
+  maxWidth="md"
+  fullWidth
+>
+  <DialogTitle>단건 출석 등록</DialogTitle>
+  <DialogContent>
+    <AttendancePerformanceForm
+  mode="attendance"
+  onSubmit={handleSingleRegister}
+  onClose={() => setShowForm(false)}
+  structure={programStructureMap.hierarchical || {}}
+  flatStructure={programStructureMap.flat || {}}
+/>
+    {/* ✅ 디버깅용 - 배포 시 제거 */}
+    {process.env.NODE_ENV === 'development' && (
+  <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+      DEBUG: programStructureMap 구조
+    </Typography>
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+      Flat keys: {Object.keys(programStructureMap.flat || {}).join(', ')}
+    </Typography>
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+      Hierarchical keys: {Object.keys(programStructureMap.hierarchical || {}).join(', ')}
+    </Typography>
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+      AllSubPrograms: {allSubPrograms.join(', ')}
+    </Typography>
+  </Box>
+)}
+  </DialogContent>
+</Dialog>
 
       {/* 대량 업로드 다이얼로그 */}
       <Dialog
@@ -852,11 +898,12 @@ const result = await fetchPerformances(searchFilters);
         <DialogTitle>대량 출석 업로드</DialogTitle>
         <DialogContent>
           <AttendancePerformanceUploadForm
-            mode="attendance"
-            onSuccess={handleUpload}
-            onClose={() => setShowUpload(false)}
-            structure={programStructureMap}
-          />
+  mode="attendance"
+  onSuccess={handleUpload}
+  onClose={() => setShowUpload(false)}
+  structure={programStructureMap.hierarchical || {}}
+  flatStructure={programStructureMap.flat || {}}
+/>
         </DialogContent>
       </Dialog>
 

@@ -1,11 +1,16 @@
 // src/pages/SubProgramMemberManage.jsx
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   FormControl, InputLabel, MenuItem, Select, Button, Dialog, DialogTitle,
   DialogContent, DialogActions, Grid, Box, Typography, Alert, CircularProgress,
-  Chip, Switch, FormControlLabel
+  Chip, Switch, FormControlLabel, TextField, InputAdornment, Collapse, Paper
 } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import ClearIcon from "@mui/icons-material/Clear";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import SubProgramMemberRegisterForm from "../components/SubProgramMemberRegisterForm";
 import SubProgramMemberUploadForm from "../components/SubProgramMemberUploadForm";
 import SubProgramMemberTable from "../components/SubProgramMemberTable";
@@ -36,6 +41,16 @@ function SubProgramMemberManage() {
   });
   const [selectedIds, setSelectedIds] = useState([]);
   const [SnackbarComp, showSnackbar] = useSnackbar();
+    // ✅ 검색 및 고급 필터 상태 추가
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    성별: "",
+    연령대: "",
+    소득구분: "",
+    이용상태: "",
+    유료무료: ""
+  });
 
   // 기존 상태 완전 유지
   const structure = useProgramStructure();
@@ -214,12 +229,12 @@ function SubProgramMemberManage() {
     }
   };
 
-  // 출석관리용 활성 이용자만 필터링하는 함수
-  const getActiveMembers = () => {
-    if (!Array.isArray(members)) return [];
-    if (!showOnlyActive) return members;
-    return members.filter(member => member.이용상태 !== "종결");
-  };
+  // ✅ 기본 활성 이용자 필터링 (고급 필터링은 filteredAndSearchedMembers에서 처리)
+const getActiveMembers = () => {
+  if (!Array.isArray(members)) return [];
+  if (!showOnlyActive) return members;
+  return members.filter(member => member.이용상태 !== "종결");
+};
 
   // 기존 모든 핸들러 함수들 완전 유지
   const reloadAfterChange = async () => {
@@ -319,9 +334,83 @@ function SubProgramMemberManage() {
     }
   };
 
-  // 안전한 모두선택 핸들러 - 중복 방지
+      // ✅ 실시간 검색 및 필터링 로직 (MemberManage.jsx 패턴 적용)
+  const filteredAndSearchedMembers = useMemo(() => {
+    let result = [...getActiveMembers()];
+
+    // 텍스트 검색 (이용자명, 연락처, 고유아이디)
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase().trim();
+      result = result.filter(member =>
+        (member.이용자명 && member.이용자명.toLowerCase().includes(searchLower)) ||
+        (member.연락처 && member.연락처.includes(searchTerm.trim())) ||
+        (member.고유아이디 && member.고유아이디.toLowerCase().includes(searchLower)) ||
+        (member.id && member.id.toLowerCase().includes(searchLower))
+      );
+    }
+
+    // 고급 필터 적용
+    if (advancedFilters.성별) {
+      result = result.filter(member => member.성별 === advancedFilters.성별);
+    }
+
+    if (advancedFilters.연령대) {
+      result = result.filter(member => member.연령대 === advancedFilters.연령대);
+    }
+
+    if (advancedFilters.소득구분) {
+      result = result.filter(member => member.소득구분 === advancedFilters.소득구분);
+    }
+
+    if (advancedFilters.이용상태) {
+      result = result.filter(member => member.이용상태 === advancedFilters.이용상태);
+    }
+
+    if (advancedFilters.유료무료) {
+      result = result.filter(member => member.유료무료 === advancedFilters.유료무료);
+    }
+
+    return result;
+  }, [members, showOnlyActive, searchTerm, advancedFilters]);
+
+  // ✅ 검색어 변경 처리 (디바운싱 적용)
+  const handleSearchChange = (event) => {
+    setSearchTerm(event.target.value);
+  };
+
+  // ✅ 고급 필터 변경 처리
+  const handleAdvancedFilterChange = (filterKey) => (event) => {
+    setAdvancedFilters(prev => ({
+      ...prev,
+      [filterKey]: event.target.value
+    }));
+  };
+
+  // ✅ 모든 필터 초기화
+  const handleClearAllFilters = () => {
+    setSearchTerm("");
+    setAdvancedFilters({
+      성별: "",
+      연령대: "",
+      소득구분: "",
+      이용상태: "",
+      유료무료: ""
+    });
+  };
+
+  // ✅ 활성 필터 개수 계산
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchTerm.trim()) count++;
+    Object.values(advancedFilters).forEach(value => {
+      if (value) count++;
+    });
+    return count;
+  }, [searchTerm, advancedFilters]);
+
+  // 안전한 모두선택 핸들러 - 필터링된 데이터 기준
   const handleSelectAll = (checked) => {
-    const targetMembers = getActiveMembers();
+    const targetMembers = filteredAndSearchedMembers;
     if (!Array.isArray(targetMembers)) {
       console.warn("⚠️ targetMembers가 배열이 아닙니다:", targetMembers);
       return;
@@ -507,6 +596,210 @@ function SubProgramMemberManage() {
           />
         </Box>
 
+        {/* ✅ 검색 및 고급 필터 섹션 추가 */}
+        <Box sx={{ mb: 3 }}>
+          {/* 통합 검색창 */}
+          <TextField
+            fullWidth
+            placeholder="이용자명, 연락처, 고유아이디로 검색..."
+            value={searchTerm}
+            onChange={handleSearchChange}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <Button
+                    size="small"
+                    onClick={() => setSearchTerm("")}
+                    sx={{ minWidth: 'auto', p: 0.5 }}
+                  >
+                    <ClearIcon fontSize="small" />
+                  </Button>
+                </InputAdornment>
+              )
+            }}
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+
+          {/* 고급 필터 토글 버튼 */}
+          <Button
+            variant="outlined"
+            endIcon={showAdvancedFilters ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            fullWidth
+            sx={{ mb: 2 }}
+          >
+            고급 필터 {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+          </Button>
+
+          {/* 필터 초기화 버튼 */}
+          <Button
+            variant="outlined"
+            color="secondary"  
+            onClick={handleClearAllFilters}
+            disabled={activeFiltersCount === 0}
+            fullWidth
+            sx={{ mb: 2 }}
+          >
+            필터 초기화
+          </Button>
+
+          {/* ✅ 고급 필터 섹션 */}
+          <Collapse in={showAdvancedFilters}>
+            <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={2.4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>성별</InputLabel>
+                    <Select
+                      value={advancedFilters.성별}
+                      onChange={handleAdvancedFilterChange("성별")}
+                      label="성별"
+                    >
+                      <MenuItem value="">전체</MenuItem>
+                      <MenuItem value="남">남</MenuItem>
+                      <MenuItem value="여">여</MenuItem>  
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6} md={2.4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>연령대</InputLabel>
+                    <Select
+                      value={advancedFilters.연령대}
+                      onChange={handleAdvancedFilterChange("연령대")}
+                      label="연령대"
+                    >
+                      <MenuItem value="">전체</MenuItem>
+                      <MenuItem value="0~7세(영유아)">0~7세(영유아)</MenuItem>
+                      <MenuItem value="10대">10대</MenuItem>
+                      <MenuItem value="20대">20대</MenuItem>
+                      <MenuItem value="30대">30대</MenuItem>
+                      <MenuItem value="40대">40대</MenuItem>
+                      <MenuItem value="50대">50대</MenuItem>
+                      <MenuItem value="60대">60대</MenuItem>
+                      <MenuItem value="70대 이상">70대 이상</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6} md={2.4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>소득구분</InputLabel>
+                    <Select
+                      value={advancedFilters.소득구분}
+                      onChange={handleAdvancedFilterChange("소득구분")}
+                      label="소득구분"
+                    >
+                      <MenuItem value="">전체</MenuItem>
+                      <MenuItem value="일반">일반</MenuItem>
+                      <MenuItem value="기초생활수급자">기초생활수급자</MenuItem>
+                      <MenuItem value="차상위">차상위</MenuItem>
+                      <MenuItem value="국가유공자">국가유공자</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6} md={2.4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>이용상태</InputLabel>
+                    <Select
+                      value={advancedFilters.이용상태}
+                      onChange={handleAdvancedFilterChange("이용상태")}
+                      label="이용상태"
+                    >
+                      <MenuItem value="">전체</MenuItem>
+                      <MenuItem value="이용">이용</MenuItem>
+                      <MenuItem value="종결">종결</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6} md={2.4}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>유료무료</InputLabel>
+                    <Select
+                      value={advancedFilters.유료무료}
+                      onChange={handleAdvancedFilterChange("유료무료")}
+                      label="유료무료"
+                    >
+                      <MenuItem value="">전체</MenuItem>
+                      <MenuItem value="무료">무료</MenuItem>
+                      <MenuItem value="유료">유료</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Collapse>
+
+          {/* ✅ 활성 필터 표시 */}
+          {activeFiltersCount > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                활성 필터:
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                {searchTerm.trim() && (
+                  <Chip
+                    label={`검색: ${searchTerm}`}
+                    onDelete={() => setSearchTerm("")}
+                    size="small"
+                    color="primary"
+                  />
+                )}
+                {advancedFilters.성별 && (
+                  <Chip
+                    label={`성별: ${advancedFilters.성별}`}
+                    onDelete={() => setAdvancedFilters(prev => ({ ...prev, 성별: "" }))}
+                    size="small"
+                  />
+                )}
+                {advancedFilters.연령대 && (
+                  <Chip
+                    label={`연령대: ${advancedFilters.연령대}`}
+                    onDelete={() => setAdvancedFilters(prev => ({ ...prev, 연령대: "" }))}
+                    size="small"
+                  />
+                )}
+                {advancedFilters.소득구분 && (
+                  <Chip
+                    label={`소득구분: ${advancedFilters.소득구분}`}
+                    onDelete={() => setAdvancedFilters(prev => ({ ...prev, 소득구분: "" }))}
+                    size="small"
+                  />
+                )}
+                {advancedFilters.이용상태 && (
+                  <Chip
+                    label={`이용상태: ${advancedFilters.이용상태}`}
+                    onDelete={() => setAdvancedFilters(prev => ({ ...prev, 이용상태: "" }))}
+                    size="small"
+                  />
+                )}
+                {advancedFilters.유료무료 && (
+                  <Chip
+                    label={`유료무료: ${advancedFilters.유료무료}`}
+                    onDelete={() => setAdvancedFilters(prev => ({ ...prev, 유료무료: "" }))}
+                    size="small"
+                  />
+                )}
+              </Box>
+            </Box>
+          )}
+
+          {/* ✅ 검색 결과 요약 */}
+          <Typography variant="body2" sx={{ mb: 2, color: "text.secondary" }}>
+            전체 {members.length}명 중 {filteredAndSearchedMembers.length}명 표시
+            {activeFiltersCount > 0 && ` (필터 ${activeFiltersCount}개 적용)`}
+          </Typography>
+        </Box>
+
         {/* 액션 버튼 그룹 - 크기 개선 */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -570,9 +863,9 @@ function SubProgramMemberManage() {
           )}
         </Grid>
 
-        {/* 데이터 테이블 */}
+                {/* 데이터 테이블 - 필터링된 데이터 전달 */}
         <SubProgramMemberTable
-          members={getActiveMembers()}
+          members={filteredAndSearchedMembers}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onBulkDelete={handleBulkDelete}
@@ -583,6 +876,7 @@ function SubProgramMemberManage() {
           onSelectAll={handleSelectAll}
           onSelectRow={handleSelectRow}
           loading={isLoading}
+          searchTerm={searchTerm} // ✅ 검색어 하이라이팅용 추가
         />
 
         {/* 모든 모달 및 다이얼로그들 유지 */}

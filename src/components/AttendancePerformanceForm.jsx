@@ -40,58 +40,121 @@ function AttendancePerformanceForm({
   const [availableMembers, setAvailableMembers] = useState([]);
 
   // 세부사업명 목록 추출
-  c  // ✅ 강사별 세부사업 필터링
+  // ✅ 강사별 세부사업 필터링
   const [subPrograms, setSubPrograms] = useState([]);
   const { user } = useUser();
   const { role } = useUserRole();
 
   // 강사별 세부사업 필터링
   useEffect(() => {
-    const loadSubPrograms = async () => {
-      if (role === "teacher" && user?.email) {
-        // 강사는 담당 세부사업만 조회
-        try {
-          const teacherPrograms = await getTeacherSubPrograms(user.email);
-          const programNames = teacherPrograms.map(p => p.subProgramName || p.세부사업명);
+  const loadSubPrograms = async () => {
+    console.log("🔍 loadSubPrograms 시작:", { role, email: user?.email, structure });
+    
+    if (role === "teacher" && user?.email) {
+      // 강사는 담당 세부사업만 조회
+      try {
+        const teacherPrograms = await getTeacherSubPrograms(user.email);
+        const programNames = teacherPrograms.map(p => p.subProgramName || p.세부사업명);
+        
+        if (programNames.length > 0) {
           setSubPrograms(programNames);
           console.log("✅ 강사 담당 세부사업:", programNames);
-        } catch (error) {
-          console.error("강사 세부사업 조회 오류:", error);
+        } else {
+          // ✅ 백업: TeamSubProgramMap에서 조회
+          console.warn("강사 담당 세부사업이 없음, 전체 목록에서 조회");
+          const { getAllTeamSubProgramMaps } = await import("../services/teamSubProgramMapAPI");
+          const allMaps = await getAllTeamSubProgramMaps();
+          const backupPrograms = allMaps.map(m => m.subProgramName).filter(Boolean);
+          setSubPrograms(Array.from(new Set(backupPrograms)).sort());
+        }
+      } catch (error) {
+        console.error("강사 세부사업 조회 오류:", error);
+        // ✅ 오류 시 백업 데이터 제공
+        try {
+          const { getAllTeamSubProgramMaps } = await import("../services/teamSubProgramMapAPI");
+          const allMaps = await getAllTeamSubProgramMaps();
+          const backupPrograms = allMaps.map(m => m.subProgramName).filter(Boolean);
+          setSubPrograms(Array.from(new Set(backupPrograms)).sort());
+          console.log("✅ 백업 세부사업 로드:", backupPrograms);
+        } catch (backupErr) {
+          console.error("백업 데이터 로드 실패:", backupErr);
           setSubPrograms([]);
         }
-      } else {
-        // 관리자는 모든 세부사업 조회
-        const allSubs = [];
-        if (structure && typeof structure === "object") {
-          Object.values(structure).forEach(item => {
-            if (item && item.세부사업명) allSubs.push(item.세부사업명);
-          });
-        }
-        setSubPrograms(Array.from(new Set(allSubs)).sort());
       }
-    };
-    
-    loadSubPrograms();
-  }, [role, user, structure]);
+    } else {
+      // 관리자는 모든 세부사업 조회
+      let allSubs = [];
+      
+      // ✅ structure에서 세부사업명 추출 (구조 개선)
+      if (structure && typeof structure === "object") {
+        console.log("🔍 structure 분석:", structure);
+        Object.keys(structure).forEach(teamName => {
+          const team = structure[teamName];
+          if (team && typeof team === "object") {
+            Object.keys(team).forEach(unitName => {
+              const unit = team[unitName];
+              if (Array.isArray(unit)) {
+                allSubs.push(...unit);
+              }
+            });
+          }
+        });
+      }
+      
+      // ✅ structure가 비어있거나 데이터가 없을 경우 백업 데이터 사용
+      if (allSubs.length === 0) {
+        console.warn("structure에서 세부사업명을 찾을 수 없음, API에서 조회");
+        try {
+          const { getAllTeamSubProgramMaps } = await import("../services/teamSubProgramMapAPI");
+          const allMaps = await getAllTeamSubProgramMaps();
+          const backupPrograms = allMaps.map(m => m.subProgramName).filter(Boolean);
+          allSubs = backupPrograms;
+          console.log("✅ 관리자 백업 세부사업 로드:", backupPrograms);
+        } catch (err) {
+          console.error("관리자 백업 데이터 로드 실패:", err);
+        }
+      }
+      
+      const uniqueSubs = Array.from(new Set(allSubs)).sort();
+      setSubPrograms(uniqueSubs);
+      console.log("✅ 관리자 세부사업 설정:", uniqueSubs);
+    }
+  };
+  
+  loadSubPrograms();
+}, [role, user, structure]);
 
   // ✅ 세부사업명 변경 시 회원 목록 로드
-  useEffect(() => {
-    async function loadMembers() {
-      if (formData.세부사업명) {
-        try {
-          const members = await getSubProgramMembers({ 세부사업명: formData.세부사업명 });
-          const activeMembers = members.filter(m => m.이용상태 !== "종결");
-          setAvailableMembers(activeMembers);
-        } catch (err) {
-          console.error("회원 목록 로드 실패:", err);
-          setAvailableMembers([]);
-        }
-      } else {
+useEffect(() => {
+  async function loadMembers() {
+    if (formData.세부사업명) {
+      console.log("🔍 회원 목록 로드 시작:", formData.세부사업명);
+      try {
+        const members = await getSubProgramMembers({ 세부사업명: formData.세부사업명 });
+        console.log("📋 조회된 전체 회원:", members);
+        console.log("📋 회원 수:", members.length);
+        
+        // 각 회원의 이용상태 확인
+        members.forEach(m => {
+          console.log(`👤 ${m.이용자명}: 이용상태=${m.이용상태}, 세부사업명=${m.세부사업명}`);
+        });
+        
+        const activeMembers = members.filter(m => m.이용상태 !== "종결");
+        console.log("✅ 활성 회원 수:", activeMembers.length);
+        console.log("✅ 활성 회원 목록:", activeMembers.map(m => m.이용자명));
+        
+        setAvailableMembers(activeMembers);
+      } catch (err) {
+        console.error("❌ 회원 목록 로드 실패:", err);
         setAvailableMembers([]);
       }
+    } else {
+      console.log("🔍 세부사업명이 비어있음");
+      setAvailableMembers([]);
     }
-    loadMembers();
-  }, [formData.세부사업명]);
+  }
+  loadMembers();
+}, [formData.세부사업명]);
 
   // 세부사업명 변경 시 기능/팀명/단위사업명 자동 매핑
   useEffect(() => {
@@ -296,70 +359,79 @@ function AttendancePerformanceForm({
 
       <Box component="form" onSubmit={handleSubmit}>
         <Grid container spacing={2}>
-          {/* ✅ 세부사업명 필드 - 수정 모드에서도 표시 */}
-          <Grid item xs={12}>
-            <FormControl fullWidth>
-              <InputLabel>세부사업명</InputLabel>
-              <Select
-                value={formData.세부사업명}
-                onChange={handleChange("세부사업명")}
-                label="세부사업명"
-              >
-                {subPrograms.map(sp => (
-                  <MenuItem key={sp} value={sp}>
-                    {sp}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
+          {/* ✅ 세부사업명 필드 - 모드에 따라 다르게 표시 */}
+<Grid item xs={12}>
+  {mode === "attendance" ? (
+    // 출석 등록 모드: 드롭다운 선택 가능
+    <FormControl fullWidth>
+      <InputLabel>세부사업명</InputLabel>
+      <Select
+        value={formData.세부사업명}
+        onChange={handleChange("세부사업명")}
+        label="세부사업명"
+      >
+        {subPrograms.map(sp => (
+          <MenuItem key={sp} value={sp}>
+            {sp}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  ) : (
+    // 실적 수정 모드: 읽기 전용 표시
+    <TextField
+      fullWidth
+      label="세부사업명"
+      value={formData.세부사업명}
+      InputProps={{ 
+        readOnly: true,
+        style: { backgroundColor: '#f5f5f5' }
+      }}
+      helperText="실적 수정 시 세부사업명은 변경할 수 없습니다"
+      variant="outlined"
+    />
+  )}
+</Grid>
 
-          {/* 이용자명 필드 */}
-          <Grid item xs={12} sm={6}>
-            {mode === "attendance" ? (
-              <FormControl fullWidth>
-                <InputLabel>이용자명</InputLabel>
-                <Select
-                  value={formData.이용자명}
-                  onChange={handleUserNameChange}
-                  label="이용자명"
-                >
-                  {availableMembers.map(member => (
-                    <MenuItem key={member.id} value={member.이용자명}>
-                      {member.이용자명}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            ) : (
-              <TextField
-                fullWidth
-                label="이용자명"
-                value={formData.이용자명}
-                onChange={handleChange("이용자명")}
-                disabled={mode === "performance"}
-              />
-            )}
-          </Grid>
-
-          {mode === "attendance" && (
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>회원 선택</InputLabel>
-                <Select
-                  value=""
-                  onChange={handleUserNameChange}
-                  label="회원 선택"
-                >
-                  {availableMembers.map(member => (
-                    <MenuItem key={member.id} value={member.이용자명}>
-                      {member.이용자명} ({member.성별 || '-'})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-          )}
+          {/* 이용자명 필드 - 통합 개선 */}
+<Grid item xs={12}>
+  {mode === "attendance" ? (
+    <FormControl fullWidth>
+      <InputLabel>이용자명 선택</InputLabel>
+      <Select
+        value={formData.이용자명}
+        onChange={handleUserNameChange}
+        label="이용자명 선택"
+        displayEmpty
+      >
+        <MenuItem value="">
+          <em>이용자를 선택하세요</em>
+        </MenuItem>
+        {availableMembers.map(member => (
+          <MenuItem key={member.id} value={member.이용자명}>
+            {member.이용자명} ({member.성별 || '성별미상'}) - {member.고유아이디 || 'ID없음'}
+          </MenuItem>
+        ))}
+      </Select>
+      {availableMembers.length === 0 && formData.세부사업명 && (
+        <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
+          ⚠️ 해당 세부사업에 활성 이용자가 없습니다.
+        </Typography>
+      )}
+    </FormControl>
+  ) : (
+    <TextField
+      fullWidth
+      label="이용자명"
+      value={formData.이용자명}
+      InputProps={{ 
+        readOnly: true,
+        style: { backgroundColor: '#f5f5f5' }
+      }}
+      helperText="실적 수정 시 이용자명은 변경할 수 없습니다"
+    />
+  )}
+</Grid>
 
           {/* 날짜 필드 */}
           <Grid item xs={12} sm={6}>

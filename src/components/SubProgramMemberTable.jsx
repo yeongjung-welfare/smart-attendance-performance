@@ -8,6 +8,16 @@ import SelectAllIcon from "@mui/icons-material/SelectAll";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
 import { normalizeDate, formatDateForDisplay } from "../utils/dateUtils";
 
+function highlightSearchTerm(text, searchTerm) {
+  if (!searchTerm || !text) return text;
+  const regex = new RegExp(`(${searchTerm})`, 'gi');
+  return text.toString().split(regex).map((part, idx) =>
+    regex.test(part)
+      ? <span key={idx} style={{ backgroundColor: 'yellow' }}>{part}</span>
+      : part
+  );
+}
+
 function SubProgramMemberTable({
   members = [],
   onDelete,
@@ -19,7 +29,8 @@ function SubProgramMemberTable({
   selectedIds = [],
   onSelectAll,
   onSelectRow,
-  loading = false
+  loading = false,
+  searchTerm = "" // ✅ 검색어 하이라이팅용 prop 추가
 }) {
   const isDeletableRole = role === "admin" || role === "manager";
   const isMobile = useMediaQuery("(max-width:600px)");
@@ -32,6 +43,22 @@ function SubProgramMemberTable({
   const safeDateFormat = (dateValue) => {
     if (!dateValue) return "";
     
+      // ✅ 검색어 하이라이팅 함수 추가
+  const highlightSearchTerm = (text, searchTerm) => {
+    if (!searchTerm || !text) return text;
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    const parts = text.toString().split(regex);
+    return parts.map((part, index) => 
+      regex.test(part) ? (
+        <span key={index} style={{ backgroundColor: '#ffeb3b', fontWeight: 'bold' }}>
+          {part}
+        </span>
+      ) : (
+        part
+      )
+    );
+  };
+
     try {
       // Firebase Timestamp 객체 처리
       if (dateValue && typeof dateValue.toDate === 'function') {
@@ -128,10 +155,20 @@ function SubProgramMemberTable({
         />
       ),
     },
-    { field: "이용자명", headerName: "이용자명", width: 120 },
+        { 
+      field: "이용자명", 
+      headerName: "이용자명", 
+      width: 120,
+      renderCell: (params) => highlightSearchTerm(params.value, searchTerm)
+    },
     { field: "세부사업명", headerName: "세부사업명", width: 150 },
     { field: "성별", headerName: "성별", width: 80 },
-    { field: "연락처", headerName: "연락처", width: 130 },
+        { 
+      field: "연락처", 
+      headerName: "연락처", 
+      width: 130,
+      renderCell: (params) => highlightSearchTerm(params.value, searchTerm)
+    },
     { field: "연령대", headerName: "연령대", width: 90 },
     { field: "이용상태", headerName: "이용상태", width: 90 },
     {

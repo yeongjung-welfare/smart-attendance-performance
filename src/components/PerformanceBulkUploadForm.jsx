@@ -130,18 +130,24 @@ function PerformanceBulkUploadForm({ onSuccess, onCancel }) {
       }
 
       if (processedRows.length > 0) {
-        const uploadResult = await uploadBulkPerformanceSummary(processedRows);
-        added += uploadResult.filter(r => r.success).length;
-        failed += uploadResult.filter(r => !r.success).length;
-        
-        setErrors(prev => [
-          ...prev,
-          ...uploadResult.filter(r => !r.success).map(r => ({ row: r.row, error: r.error }))
-        ]);
-      }
+  const uploadResult = await uploadBulkPerformanceSummary(processedRows);
+  
+  // ✅ API 결과만으로 정확한 카운팅
+  const successCount = uploadResult.filter(r => r.success).length;
+  const failCount = uploadResult.filter(r => !r.success).length;
+  
+  // ✅ 수정: 검증 실패 + API 실패 누적
+  added = successCount;
+  failed += failCount; // 기존 검증 실패에 API 실패 추가
+  
+  setErrors(prev => [
+    ...prev,
+    ...uploadResult.filter(r => !r.success).map(r => ({ row: r.row, error: r.error }))
+  ]);
+}
 
-      setResult({ added, failed });
-      if (onSuccess) onSuccess(processedRows);
+setResult({ added, failed });
+if (onSuccess) onSuccess(processedRows, { added, failed }); // ✅ 결과 정보도 함께 전달
 
     } catch (err) {
       setResult({ errorMessage: err.message });
@@ -152,20 +158,40 @@ function PerformanceBulkUploadForm({ onSuccess, onCancel }) {
   };
 
   const downloadTemplate = () => {
-    const template = [
-      {
-        날짜: getCurrentKoreanDate(),
-        세부사업명: "프로그램 A",
-        단위사업명: "교육문화 및 평생교육",
-        등록인원: 100,
-        실인원: 100,
-        연인원: 180,
-        건수: 50,
-        비고: "참고"
-      }
-    ];
-    exportToExcel({ data: template, fileName: "PerformanceTemplate.xlsx" });
-  };
+  const template = [
+    {
+      날짜: getCurrentKoreanDate(),
+      세부사업명: "성인 줌바댄스",
+      단위사업명: "교육문화 및 평생교육",
+      등록인원: 8,
+      실인원: 7,
+      연인원: 18,
+      건수: 4,
+      비고: "6층 체육관"
+    },
+    {
+      날짜: getCurrentKoreanDate(),
+      세부사업명: "성인 줌바댄스", // 같은 프로그램
+      단위사업명: "교육문화 및 평생교육", // 같은 단위사업
+      등록인원: 5, // 다른 인원수
+      실인원: 4,   // 다른 인원수  
+      연인원: 12,  // 다른 연인원
+      건수: 3,     // 다른 건수
+      비고: "야외 공원" // 다른 장소 → 별도 실적으로 인정
+    },
+    {
+      날짜: getCurrentKoreanDate(),
+      세부사업명: "한글교실",
+      단위사업명: "교육문화 및 평생교육",
+      등록인원: 15,
+      실인원: 12,
+      연인원: 36,
+      건수: 8,
+      비고: "초급반"
+    }
+  ];
+  exportToExcel({ data: template, fileName: "PerformanceTemplate.xlsx" });
+};
 
   const downloadErrorLog = () => {
     const errorData = errors.map(e => ({ ...e.row, 오류: e.error }));
@@ -192,12 +218,14 @@ function PerformanceBulkUploadForm({ onSuccess, onCancel }) {
       </Box>
 
       <Typography variant="body2" sx={{ mb: 2, color: "text.secondary" }}>
-        필수 항목: 세부사업명<br />
-        ※ 날짜는 YYYY-MM-DD 형식(선택)<br />
-        ✅ 등록인원, 실인원 중 하나만 입력해도 자동 채움(중복 없음)<br />
-        ✅ 대량실적(집계 실적)은 날짜, 세부사업명, 단위사업명, 등록인원, 실인원, 연인원, 건수, 비고만 업로드<br />
-        📌 기능, 팀명 등은 세부사업명 기준 자동 매핑(저장 시점에 처리)
-      </Typography>
+  <strong>필수 항목:</strong> 세부사업명<br />
+  <strong>중복 체크 기준:</strong> 날짜 + 세부사업명 + 단위사업명 + 등록인원 + 실인원 + 연인원 + 건수 + 비고<br />
+  ※ 날짜는 YYYY-MM-DD 형식(선택, 미입력시 오늘 날짜)<br />
+  ✅ 등록인원, 실인원 중 하나만 입력해도 자동 채움<br />
+  ⚠️ <strong style={{color: '#ed6c02'}}>모든 항목이 완전히 동일한 경우에만</strong> 중복으로 판정됩니다<br />
+  ✅ 같은 프로그램이라도 <strong style={{color: '#2e7d32'}}>인원수나 비고가 다르면 별도 실적</strong>으로 등록<br />
+  📌 기능, 팀명 등은 세부사업명 기준 자동 매핑(저장 시점에 처리)
+</Typography>
 
       <Box sx={{ mb: 2, display: "flex", gap: 2, flexWrap: "wrap" }}>
         <Button

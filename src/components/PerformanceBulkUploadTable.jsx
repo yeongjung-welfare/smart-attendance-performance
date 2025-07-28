@@ -544,11 +544,12 @@ function PerformanceBulkUploadTable({
   pt: 1
 }}>
   <DataGrid
-    rows={data}
-    columns={columns}
-    getRowId={(row) => row.id}
-    checkboxSelection
-    autoHeight={true} // ✅ 추가: 자동 높이 조절
+  rows={data}
+  columns={columns}
+  getRowId={(row) => row.id}
+  checkboxSelection
+  autoHeight={false} // ✅ 변경: 고정 높이 사용
+  height={600}       // ✅ 추가: 고정 높이 설정
     onRowSelectionModelChange={(newSelection) => {
             const newSelectedIds = Array.from(newSelection);
             console.log("📊 DataGrid 선택 변경:", newSelectedIds); // 디버깅용
@@ -621,50 +622,64 @@ function PerformanceBulkUploadTable({
             sorting: { sortModel: [{ field: '날짜', sort: 'desc' }] }
           }}
           sx={{
-            border: 'none',
-            borderRadius: 2,
-            '& .MuiDataGrid-columnHeaders': {
-              backgroundColor: 'primary.50',
-              color: 'primary.dark',
-              fontWeight: 700,
-              fontSize: '0.9rem',
-              borderRadius: '8px 8px 0 0'
-            },
-            '& .MuiDataGrid-row': {
-              '&:hover': {
-                backgroundColor: 'action.hover',
-                transform: 'scale(1.01)',
-                transition: 'all 0.2s ease-in-out'
-              },
-              '&.Mui-selected': {
-                backgroundColor: 'primary.50',
-                '&:hover': {
-                  backgroundColor: 'primary.100'
-                }
-              }
-            },
-            '& .MuiDataGrid-cell': {
-              borderColor: 'grey.200',
-              fontSize: '0.9rem'
-            },
-            '& .MuiDataGrid-columnSeparator': {
-              display: 'none',
-            },
-            '& .MuiDataGrid-toolbarContainer': {
-              padding: 3,
-              paddingBottom: 2,
-              borderBottom: 1,
-              borderColor: 'grey.200',
-              backgroundColor: 'grey.25',
-              borderRadius: '8px 8px 0 0'
-            },
-            '& .MuiDataGrid-footerContainer': {
-              borderTop: 1,
-              borderColor: 'grey.200',
-              backgroundColor: 'grey.25',
-              borderRadius: '0 0 8px 8px'
-            }
-          }}
+  border: 'none',
+  borderRadius: 2,
+  // ✅ 추가: 스크롤 관련 스타일
+  height: 600,              // 고정 높이
+  width: '100%',            // 전체 너비
+  minWidth: 1200,           // 최소 너비 (가로 스크롤 활성화)
+  '& .MuiDataGrid-root': {
+    overflow: 'auto',       // 스크롤 활성화
+  },
+  '& .MuiDataGrid-virtualScrollerContent': {
+    minWidth: 1200,         // 컨텐츠 최소 너비
+  },
+  '& .MuiDataGrid-columnHeaders': {
+    backgroundColor: 'primary.50',
+    color: 'primary.dark',
+    fontWeight: 700,
+    fontSize: '0.9rem',
+    borderRadius: '8px 8px 0 0',
+    position: 'sticky',     // ✅ 헤더 고정
+    top: 0,
+    zIndex: 1,
+  },
+  '& .MuiDataGrid-row': {
+    '&:hover': {
+      backgroundColor: 'action.hover',
+      transform: 'scale(1.01)',
+      transition: 'all 0.2s ease-in-out'
+    },
+    '&.Mui-selected': {
+      backgroundColor: 'primary.50',
+      '&:hover': {
+        backgroundColor: 'primary.100'
+      }
+    }
+  },
+  '& .MuiDataGrid-cell': {
+    borderColor: 'grey.200',
+    fontSize: '0.9rem',
+    whiteSpace: 'nowrap',   // ✅ 텍스트 줄바꿈 방지
+  },
+  '& .MuiDataGrid-columnSeparator': {
+    display: 'none',
+  },
+  '& .MuiDataGrid-toolbarContainer': {
+    padding: 3,
+    paddingBottom: 2,
+    borderBottom: 1,
+    borderColor: 'grey.200',
+    backgroundColor: 'grey.25',
+    borderRadius: '8px 8px 0 0'
+  },
+  '& .MuiDataGrid-footerContainer': {
+    borderTop: 1,
+    borderColor: 'grey.200',
+    backgroundColor: 'grey.25',
+    borderRadius: '0 0 8px 8px'
+  }
+}}
           disableRowSelectionOnClick={false}
           density="comfortable"
           // ✅ 추가 성능 최적화 옵션

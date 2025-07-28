@@ -534,13 +534,20 @@ export async function uploadPerformanceData(rows) {
 }
 
 // 실적 대량 업로드 (집계용: 세부사업명만 필수, 등록인원/실인원/연인원/건수/비고/기능/팀명/단위사업명)
+// 실적 대량 업로드 (집계용: 세부사업명만 필수, 등록인원/실인원/연인원/건수/비고/기능/팀명/단위사업명)
 export async function uploadBulkPerformanceSummary(rows) {
   const collectionRef = collection(db, "PerformanceSummary");
   const results = [];
 
   for (const row of rows) {
-    const 날짜 = normalizeDate(row.날짜 || ""); // ✅ 날짜 정규화
+    const 날짜 = normalizeDate(row.날짜 || getCurrentKoreanDate()); // 날짜가 없으면 오늘 날짜
     const 세부사업명 = (row.세부사업명 || "").trim();
+
+    // 필수 필드 검증
+    if (!세부사업명) {
+      results.push({ success: false, row, error: "세부사업명은 필수입니다." });
+      continue;
+    }
 
     // 자동 매핑: 세부사업명만 있을 때 기능/팀명/단위사업명 자동 매핑
     let 단위사업명 = (row.단위사업명 || "").trim();
@@ -548,11 +555,15 @@ export async function uploadBulkPerformanceSummary(rows) {
     let 팀명 = (row.팀명 || "").trim();
 
     if ((!기능 || !단위사업명 || !팀명) && 세부사업명) {
-      const mapped = await getStructureBySubProgram(세부사업명);
-      if (mapped) {
-        기능 = 기능 || mapped.function;
-        단위사업명 = 단위사업명 || mapped.unit;
-        팀명 = 팀명 || mapped.team;
+      try {
+        const mapped = await getStructureBySubProgram(세부사업명);
+        if (mapped) {
+          기능 = 기능 || mapped.function;
+          단위사업명 = 단위사업명 || mapped.unit;
+          팀명 = 팀명 || mapped.team;
+        }
+      } catch (error) {
+        console.warn("자동 매핑 실패:", error);
       }
     }
 
@@ -562,38 +573,43 @@ export async function uploadBulkPerformanceSummary(rows) {
     const 건수 = Number(row.건수) || 0;
     const 비고 = (row.비고 || "").trim();
 
-    // 횟수: 프로그램별+날짜별 1회만 집계
-    let 횟수 = 1;
-    if (세부사업명 && 날짜) {
-      // 실제 운영계획 DB가 있다면 getProgramSessionsForMonth 활용 가능
-      // 횟수 = await getProgramSessionsForMonth(세부사업명, 날짜.slice(0, 7));
-      // 단, 대량실적 업로드에서는 1로 기본 처리(집계에서 날짜별 1회만 누적)
-    }
-
-    if (!세부사업명) {
-      results.push({ success: false, row, error: "세부사업명 필수" });
-      continue;
-    }
-
-    const q = query(
-      collectionRef,
-      where("세부사업명", "==", 세부사업명),
-      ...(날짜 ? [where("날짜", "==", 날짜)] : []), // ✅ 정규화된 날짜 사용
-      ...(단위사업명 ? [where("단위사업명", "==", 단위사업명)] : []),
-      ...(기능 ? [where("기능", "==", 기능)] : []),
-      ...(팀명 ? [where("팀명", "==", 팀명)] : []),
-      ...(비고 ? [where("비고", "==", 비고)] : [])
-    );
-
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      results.push({ success: false, row, error: "중복 데이터 존재" });
-      continue;
-    }
-
+    // 🔥 핵심: 모든 주요 필드 완전 일치 체크
     try {
+      // Firestore 복합 쿼리 제한으로 인해 기본 필터링 후 클라이언트에서 완전 체크
+      const q = query(
+        collectionRef,
+        where("날짜", "==", 날짜),
+        where("세부사업명", "==", 세부사업명),
+        where("실적유형", "==", "대량")
+      );
+
+      const snapshot = await getDocs(q);
+      
+      // 클라이언트에서 모든 필드 완전 일치 체크
+      const duplicateDoc = snapshot.docs.find(doc => {
+        const data = doc.data();
+        return (
+          data.단위사업명 === 단위사업명 &&
+          data.등록인원 === 등록인원 &&
+          data.실인원 === 실인원 &&
+          data.연인원 === 연인원 &&
+          data.건수 === 건수 &&
+          data.비고 === 비고
+        );
+      });
+
+      if (duplicateDoc) {
+        results.push({ 
+          success: false, 
+          row, 
+          error: "완전 중복 데이터 존재 (모든 필드 동일)" 
+        });
+        continue;
+      }
+
+      // 신규 등록
       const docData = {
-        날짜, // ✅ 정규화된 날짜
+        날짜,
         세부사업명,
         단위사업명,
         기능,
@@ -603,12 +619,13 @@ export async function uploadBulkPerformanceSummary(rows) {
         연인원,
         건수,
         비고,
-        createdAt: getCurrentKoreanDate(), // ✅ 문자열로 저장
+        createdAt: getCurrentKoreanDate(),
         실적유형: "대량"
       };
 
       await addDoc(collectionRef, docData);
       results.push({ success: true, row });
+
     } catch (err) {
       results.push({ success: false, row, error: err.message });
     }

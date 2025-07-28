@@ -691,6 +691,8 @@ function PerformanceBulkUploadPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeStep, setActiveStep] = useState(0);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [showUploadResult, setShowUploadResult] = useState(false);
   const navigate = useNavigate();
   const [SnackbarComp, showSnackbar] = useSnackbar();
   const theme = useTheme();
@@ -868,14 +870,30 @@ function PerformanceBulkUploadPage() {
     }
   };
 
-  const handleUploadSuccess = async (uploadedData) => {
-    console.log("📥 업로드 완료, 데이터 갱신 시작...", uploadedData);
-    await loadBulkPerformances();
-    await handleSyncStats();
-    setUploadOpen(false);
-    setActiveStep(3); // 결과 확인 단계로 이동
-    showSnackbar(`${uploadedData?.length || 0}건의 대량실적이 업로드되었습니다.`, "success");
-  };
+  const handleUploadSuccess = async (uploadedData, result) => {
+  console.log("📥 업로드 완료, 데이터 갱신 시작...", uploadedData, result);
+  
+  // ✅ 성공/실패 결과 모두 표시
+  const isSuccess = result?.added > 0;
+  const message = result 
+    ? `✅ 성공: ${result.added}건 / ❌ 실패: ${result.failed}건`
+    : `${uploadedData?.length || 0}건의 대량실적이 업로드되었습니다.`;
+  
+  setUploadResult({
+    success: isSuccess,
+    total: (result?.added || 0) + (result?.failed || 0),
+    added: result?.added || 0,
+    failed: result?.failed || 0,
+    message: message
+  });
+  setShowUploadResult(true);
+  
+  await loadBulkPerformances();
+  await handleSyncStats();
+  setUploadOpen(false);
+  setActiveStep(3);
+  showSnackbar(message, isSuccess ? "success" : "warning");
+};
 
   const getStepIcon = (stepIndex) => {
     switch (stepIndex) {
@@ -1156,9 +1174,42 @@ function PerformanceBulkUploadPage() {
               </CardContent>
             </Card>
 
-            {/* 업로드 결과 테이블 */}
-            <Card sx={{ borderRadius: 2 }}>
-              <CardContent sx={{ p: 0 }}>
+            {/* ✅ 업로드 결과 표시 영역 추가 */}
+{showUploadResult && uploadResult && (
+  <Fade in={showUploadResult}>
+    <Alert 
+      severity={uploadResult.success ? "success" : "error"}
+      sx={{ 
+        mb: 2,
+        borderRadius: 2,
+        '& .MuiAlert-action': {
+          alignItems: 'flex-start'
+        }
+      }}
+      action={
+        <Button 
+          color="inherit" 
+          size="small" 
+          onClick={() => setShowUploadResult(false)}
+          sx={{ mt: -0.5 }}
+        >
+          닫기
+        </Button>
+      }
+    >
+      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+        {uploadResult.success ? '✅ 업로드 완료' : '❌ 업로드 실패'}
+      </Typography>
+      <Typography variant="body2">
+        {uploadResult.message}
+      </Typography>
+    </Alert>
+  </Fade>
+)}
+
+{/* 업로드 결과 테이블 */}
+<Card sx={{ borderRadius: 2 }}>
+  <CardContent sx={{ p: 0 }}>
                 <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
                   <Stack 
                     direction={isMobile ? "column" : "row"} 
@@ -1183,18 +1234,28 @@ function PerformanceBulkUploadPage() {
                     )}
                   </Stack>
                 </Box>
-
-                <PerformanceBulkUploadTable
-                  data={bulkPerformances}
-                  selected={selectedIds}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onSelect={handleSelect}
-                  onSelectAll={handleSelectAll}
-                  onDeleteSelected={handleDeleteSelected}
-                  onAdd={() => setAddOpen(true)}
-                  loading={loading}
-                />
+{/* ✅ 스크롤 가능한 테이블 컨테이너 */}
+    <Box sx={{ 
+      width: '100%', 
+      overflowX: 'auto',  // 가로 스크롤
+      overflowY: 'auto',  // 세로 스크롤
+      maxHeight: 600,     // 최대 높이
+      border: '1px solid',
+      borderColor: 'divider',
+      borderRadius: 2
+    }}>
+      <PerformanceBulkUploadTable
+        data={bulkPerformances}
+        selected={selectedIds}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onSelect={handleSelect}
+        onSelectAll={handleSelectAll}
+        onDeleteSelected={handleDeleteSelected}
+        onAdd={() => setAddOpen(true)}
+        loading={loading}
+      />
+    </Box>
               </CardContent>
             </Card>
           </Stack>

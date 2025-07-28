@@ -1,4 +1,4 @@
-/* src/index.css - 기존 Tailwind 설정 완전 보존하면서 색상 문제만 해결 */
+/* src/index.css - React 앱에 최적화된 버전 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
 
 :root {
@@ -26,21 +26,24 @@ a:hover {
 
 body {
   margin: 0;
+  padding: 0;                    /* ✅ 추가 */
   min-height: 100vh;
   background-color: #fafafa;
   color: #212121;
+  overflow-x: hidden;           /* ✅ 가로 스크롤 방지 */
 }
 
 #root {
   min-height: 100vh;
   background-color: #fafafa;
+  width: 100%;                  /* ✅ 전체 너비 보장 */
 }
 
-@media (min-width: 320px) {
+/* ✅ 모바일 최적화 - 더 안전한 방식 */
+@media (max-width: 600px) {
   body {
-    display: flex;
-    place-items: center;
-    min-width: 0;
+    font-size: 16px;
+    min-width: 320px;           /* ✅ 최소 너비만 보장 */
   }
 }
 
@@ -71,13 +74,6 @@ button:hover {
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
-}
-
-/* 모바일 최적화 */
-@media (max-width: 600px) {
-  body {
-    font-size: 16px;
-  }
 }
 
 /* 고대비 모드 지원 */

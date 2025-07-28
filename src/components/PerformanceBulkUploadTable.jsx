@@ -18,7 +18,13 @@ import {
   Fade,
   Alert
 } from '@mui/material';
-import { DataGrid, GridToolbar } from '@mui/x-data-grid';
+import { 
+  DataGrid, 
+  GridToolbar,
+  GridToolbarContainer,
+  GridToolbarQuickFilter,
+  useGridApiContext
+} from '@mui/x-data-grid';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -31,6 +37,72 @@ import {
   Assessment as AssessmentIcon,
   Warning as WarningIcon
 } from '@mui/icons-material';
+import { 
+  GetApp as DownloadIcon 
+} from '@mui/icons-material';
+import { exportToExcel } from '../utils/exportToExcel';
+
+  // ✅ 커스텀 툴바 컴포넌트 추가
+function CustomToolbar({ data }) {
+  const handleExcelExport = () => {
+    if (!data || data.length === 0) {
+      alert("다운로드할 데이터가 없습니다.");
+      return;
+    }
+    
+    // ✅ 컬럼 순서를 보장하는 데이터 재구성
+    const orderedData = data.map(row => ({
+  '날짜': row.날짜 || '',
+  '팀명': row.팀명 || '',
+  '기능': row.기능 || '',
+  '단위사업명': row.단위사업명 || '',
+  '세부사업명': row.세부사업명 || '', 
+  '등록인원': row.등록인원 || 0,
+  '실인원': row.실인원 || 0, 
+  '연인원': row.연인원 || 0,
+  '건수': row.건수 || 0,
+  '비고': row.비고 || ''
+}));
+    
+    exportToExcel({
+      data: orderedData,  // ✅ 순서가 보장된 데이터
+      fileName: `대량실적_${new Date().toISOString().split('T')[0]}`,
+      sheetName: '실적데이터'
+    });
+  };
+
+  return (
+    <GridToolbarContainer>
+      {/* 검색 필터 */}
+      <GridToolbarQuickFilter 
+        placeholder="실적 검색..."
+        debounceMs={500}
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 2
+          }
+        }}
+      />
+      
+      {/* 엑셀 내보내기 버튼 */}
+      <Button
+        startIcon={<DownloadIcon />}
+        onClick={handleExcelExport}
+        variant="outlined"
+        size="small"
+        sx={{ 
+          ml: 2,
+          borderRadius: 2,
+          '&:hover': {
+            transform: 'translateY(-1px)'
+          }
+        }}
+      >
+        엑셀 다운로드
+      </Button>
+    </GridToolbarContainer>
+  );
+}
 
 // ✅ 모바일 카드 컴포넌트 개선
 function MobilePerformanceCard({ row, selected, onSelect, onEdit, onDelete }) {
@@ -550,6 +622,37 @@ function PerformanceBulkUploadTable({
   checkboxSelection
   autoHeight={false} // ✅ 변경: 고정 높이 사용
   height={600}       // ✅ 추가: 고정 높이 설정
+  // ✅ 한국어 텍스트 추가
+          localeText={{
+            // 툴바
+            toolbarColumns: '컬럼',
+            toolbarFilters: '필터',
+            toolbarDensity: '밀도',
+            toolbarExport: '내보내기',
+            
+            // 필터
+            filterPanelColumns: '컬럼',
+            filterPanelOperator: '연산자',
+            filterPanelValue: '값',
+            filterOperatorContains: '포함',
+            filterOperatorEquals: '같음',
+            filterOperatorStartsWith: '시작',
+            filterOperatorEndsWith: '끝',
+            filterOperatorIsEmpty: '비어있음',
+            filterOperatorIsNotEmpty: '비어있지않음',
+            
+            // 기타
+            noRowsLabel: '데이터가 없습니다',
+            footerRowSelected: (count) => `${count}개 행 선택됨`,
+            footerTotalRows: '전체 행:',
+            columnMenuLabel: '메뉴',
+            columnMenuShowColumns: '컬럼 표시',
+            columnMenuFilter: '필터',
+            columnMenuHideColumn: '숨기기',
+            columnMenuUnsort: '정렬 해제',
+            columnMenuSortAsc: '오름차순',
+            columnMenuSortDesc: '내림차순',
+          }}
     onRowSelectionModelChange={(newSelection) => {
             const newSelectedIds = Array.from(newSelection);
             console.log("📊 DataGrid 선택 변경:", newSelectedIds); // 디버깅용
@@ -572,8 +675,8 @@ function PerformanceBulkUploadTable({
           }}
           rowSelectionModel={selected}
           slots={{ 
-            toolbar: GridToolbar,
-            noRowsOverlay: () => (
+            toolbar: () => <CustomToolbar data={data} />,
+  noRowsOverlay: () => (
               <Stack height="100%" alignItems="center" justifyContent="center" spacing={3} sx={{ p: 4 }}>
                 <WarningIcon sx={{ fontSize: 80, color: 'warning.main' }} />
                 <Stack alignItems="center" spacing={2}>
@@ -601,20 +704,6 @@ function PerformanceBulkUploadTable({
                 </Stack>
               </Stack>
             )
-          }}
-          slotProps={{
-            toolbar: {
-              showQuickFilter: true,
-              quickFilterProps: { 
-                debounceMs: 500,
-                placeholder: "실적 검색...",
-                sx: {
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 2
-                  }
-                }
-              },
-            },
           }}
           pageSizeOptions={[10, 25, 50, 100]}
           initialState={{

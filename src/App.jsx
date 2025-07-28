@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import { koKR } from "@mui/x-data-grid/locales";
+import { koKR as coreKoKR } from "@mui/material/locale";
 import AppBar from "./components/AppBar";
 import SideNav from "./components/SideNav";
 import MobileNav from "./components/MobileNav";
@@ -27,6 +31,17 @@ import PerformanceBulkUploadPage from "./pages/PerformanceBulkUploadPage";
 import { auth, db } from "./firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+
+// ✅ 한국어 테마 생성
+const theme = createTheme(
+  {
+    palette: {
+      mode: 'light',
+    },
+  },
+  koKR, // DataGrid 한국어
+  coreKoKR // Material-UI 코어 한국어
+);
 
 function App() {
   const [role, setRole] = useState(null);
@@ -107,6 +122,8 @@ function App() {
   }
 
   return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
     <ErrorBoundary>
       <div className="flex min-h-screen bg-gray-50">
         <StatsProvider>
@@ -166,9 +183,10 @@ function App() {
               </Routes>
             </main>
           </div>
-        </StatsProvider>
+                </StatsProvider>
       </div>
     </ErrorBoundary>
+    </ThemeProvider>
   );
 }
 

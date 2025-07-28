@@ -30,7 +30,7 @@ body {
   min-height: 100vh;
   background-color: #fafafa;
   color: #212121;
-  overflow-x: hidden;           /* ✅ 가로 스크롤 방지 */
+  overflow-x: auto;             /* ✅ 필요시 가로 스크롤 허용 */
 }
 
 #root {

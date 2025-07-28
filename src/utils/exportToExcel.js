@@ -58,8 +58,8 @@ export function exportToExcel({ data, fileName = "data", sheetName = "Sheet1" })
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     }
-  } catch (error) {
+    } catch (error) {
     console.error("엑셀 내보내기 오류:", error);
-    alert("엑셀 내보내기 중 오류가 발생했습니다.");
+    alert(`엑셀 내보내기 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`);
   }
 }

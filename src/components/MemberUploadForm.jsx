@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
-  Button, Paper, Typography, Alert, LinearProgress, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogActions
+Button, Paper, Typography, Alert, LinearProgress, Table, TableBody, TableCell,
+TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Box
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
@@ -12,7 +12,6 @@ import { getAgeGroup } from "../utils/ageGroup";
 import { getAge } from "../utils/ageUtils";
 import { normalizeDate, getCurrentKoreanDate } from "../utils/dateUtils";
 import useMediaQuery from '@mui/material/useMediaQuery';
-import Box from '@mui/material/Box';
 
 // ✅ 전화번호 정규화 함수 추가
 function normalizePhone(phone) {
@@ -154,14 +153,20 @@ function MemberUploadForm({ onSuccess, onClose }) {
         }
       }
 
-      setResult({ added, updated, failed });
+            setResult({ added, updated, failed });
       if (unmatchedRows.length > 0) setShowUnmatchedDialog(true);
-      if (typeof onSuccess === "function") onSuccess();
-
+      
+      // ✅ 자동 닫기 제거 - 사용자가 직접 닫기
+      // if (typeof onSuccess === "function") onSuccess();
     } catch (err) {
+      console.error("업로드 오류:", err);
       setResult({ error: err.message });
     } finally {
       setUploading(false);
+      // ✅ 파일 input 초기화
+      if (fileInput.current) {
+        fileInput.current.value = '';
+      }
     }
   };
 
@@ -193,14 +198,49 @@ function MemberUploadForm({ onSuccess, onClose }) {
       {uploading && <LinearProgress sx={{ mb: 2 }} />}
 
       {result?.added !== undefined && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          {result.added}명 신규 등록, {result.updated}명 정보 업데이트, {result.failed}명 실패
-        </Alert>
+  <Alert severity="success" sx={{ mb: 2 }}>
+    <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+      📊 업로드 완료!
+    </Typography>
+    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 1 }}>
+      <Chip 
+        label={`✅ 신규: ${result.added}명`} 
+        color="success" 
+        size="small" 
+      />
+      <Chip 
+        label={`🔄 업데이트: ${result.updated}명`} 
+        color="info" 
+        size="small" 
+      />
+      {result.failed > 0 && (
+        <Chip 
+          label={`❌ 실패: ${result.failed}명`} 
+          color="error" 
+          size="small" 
+        />
       )}
+    </Box>
+    {(result.added > 0 || result.updated > 0) && (
+      <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: "success.main" }}>
+        🎉 아래 "완료" 버튼을 눌러 결과를 확인하세요!
+      </Typography>
+    )}
+  </Alert>
+)}
 
       {result?.error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           오류: {result.error}
+        </Alert>
+      )}
+
+      {/* ✅ 오류 안내 Alert 추가 */}
+      {errors.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            ⚠️ {errors.length}건의 오류가 발생했습니다. 아래 표에서 확인하세요.
+          </Typography>
         </Alert>
       )}
 
@@ -231,12 +271,23 @@ function MemberUploadForm({ onSuccess, onClose }) {
       </Typography>
 
       {onClose && (
-        <Box sx={{ textAlign: "center" }}>
-          <Button onClick={onClose} variant="outlined">
-            닫기
-          </Button>
-        </Box>
-      )}
+  <Box sx={{ textAlign: "center", mt: 2 }}>
+    <Button 
+      onClick={() => {
+        onClose();
+        if ((result?.added > 0 || result?.updated > 0) && onSuccess) {
+          onSuccess(); // 성공적으로 업로드된 경우에만 onSuccess 호출
+        }
+      }} 
+      variant={(result?.added > 0 || result?.updated > 0) ? "contained" : "outlined"}
+      color={(result?.added > 0 || result?.updated > 0) ? "success" : "primary"}
+      size="large"
+      sx={{ minWidth: 120 }}
+    >
+      {(result?.added > 0 || result?.updated > 0) ? "✅ 완료" : "닫기"}
+    </Button>
+  </Box>
+)}
 
       <Dialog
         open={showUnmatchedDialog}

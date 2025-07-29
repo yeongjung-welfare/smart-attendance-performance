@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import {
   Button, Paper, Typography, Alert, LinearProgress, Table, TableBody, TableCell, Box,
-  TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogActions
+  TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogActions, Chip
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { uploadAttendanceData } from "../services/attendancePerformanceAPI";
@@ -205,14 +205,19 @@ if (!hasMapping) {
       }
 
       setResult({ added, matched, failed });
-      setUnmatchedRows(unmatched);
-      if (unmatched.length > 0) setShowUnmatchedDialog(true);
-      if (onSuccess) onSuccess();
+setUnmatchedRows(unmatched);
+if (unmatched.length > 0) setShowUnmatchedDialog(true);
 
-    } catch (err) {
+        } catch (err) {
+      console.error("업로드 오류:", err); // ✅ 디버깅용 로그 추가
       setResult({ errorMessage: err.message });
-    } finally {
+      showSnackbar("업로드 실패: " + err.message, "error"); // ✅ 스낵바 알림 추가
+        } finally {
       setUploading(false);
+      // ✅ 파일 input 초기화 (같은 파일 재선택 가능)
+      if (fileInput.current) {
+        fileInput.current.value = '';
+      }
     }
   };
 
@@ -239,14 +244,14 @@ if (!hasMapping) {
           style={{ display: "none" }}
         />
         <Button
-          onClick={() => fileInput.current?.click()}
-          variant="contained"
-          startIcon={<UploadFileIcon />}
-          disabled={uploading || userRole === "teacher"}
-          sx={{ fontSize: { xs: "1rem", sm: "1.1rem" }, py: 1.2, width: { xs: "100%", sm: "auto" } }}
-        >
-          엑셀 파일 선택
-        </Button>
+  onClick={() => fileInput.current?.click()}
+  variant="contained"
+  startIcon={<UploadFileIcon />}
+  disabled={uploading || userRole === "teacher"}
+  sx={{ fontSize: { xs: "1rem", sm: "1.1rem" }, py: 1.2, width: { xs: "100%", sm: "auto" } }}
+>
+  {uploading ? "업로드 중..." : "엑셀 파일 선택"}
+</Button>
       </Box>
 
       {uploading && <LinearProgress sx={{ mb: 2 }} />}
@@ -256,7 +261,7 @@ if (!hasMapping) {
     <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
       📊 업로드 완료!
     </Typography>
-    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 1 }}>
       <Chip 
         label={`✅ 성공: ${result.added}건`} 
         color="success" 
@@ -280,12 +285,26 @@ if (!hasMapping) {
         💡 업로드된 출석 데이터는 자동으로 실적에 연동되었습니다.
       </Typography>
     )}
+    {result.added > 0 && (
+      <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: "success.main" }}>
+        🎉 아래 "완료" 버튼을 눌러 결과를 확인하세요!
+      </Typography>
+    )}
   </Alert>
 )}
 
-      {result?.errorMessage && (
+            {result?.errorMessage && (
         <Alert severity="error" sx={{ mb: 2 }}>
           ⚠️ 업로드 실패: {result.errorMessage}
+        </Alert>
+      )}
+
+      {/* ✅ 오류 안내 Alert 추가 */}
+      {errors.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            ⚠️ {errors.length}건의 오류가 발생했습니다. 아래 표에서 확인하세요.
+          </Typography>
         </Alert>
       )}
 
@@ -311,12 +330,23 @@ if (!hasMapping) {
       )}
 
       {onClose && (
-        <Box sx={{ textAlign: "center" }}>
-          <Button onClick={onClose} variant="outlined">
-            닫기
-          </Button>
-        </Box>
-      )}
+  <Box sx={{ textAlign: "center", mt: 2 }}>
+          <Button 
+        onClick={() => {
+          onClose();
+          if (result?.added > 0 && onSuccess) {
+            onSuccess(); // 성공적으로 업로드된 경우에만 onSuccess 호출
+          }
+        }} 
+        variant={result?.added > 0 ? "contained" : "outlined"}
+        color={result?.added > 0 ? "success" : "primary"}
+        size="large"
+        sx={{ minWidth: 120 }}  // ← 이 부분 추가 필요
+      >
+        {result?.added > 0 ? "✅ 완료" : "닫기"}  // ← 이모지 추가 및 완전한 형태
+      </Button>
+  </Box>
+)}
 
       <Dialog
         open={showUnmatchedDialog}

@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Button, Paper, Typography, Alert, LinearProgress, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogActions, Box
+  TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogActions, Box, Chip
 } from "@mui/material";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -146,14 +146,20 @@ function PerformanceBulkUploadForm({ onSuccess, onCancel }) {
   ]);
 }
 
-setResult({ added, failed });
-if (onSuccess) onSuccess(processedRows, { added, failed }); // ✅ 결과 정보도 함께 전달
-
+      setResult({ added, failed });
+      
+      // ✅ 자동 닫기 제거 - 사용자가 직접 닫기
+      // if (onSuccess) onSuccess(processedRows, { added, failed });
     } catch (err) {
+      console.error("업로드 오류:", err);
       setResult({ errorMessage: err.message });
     } finally {
       setUploading(false);
       setProgress(0);
+      // ✅ 파일 input 초기화
+      if (fileInput.current) {
+        fileInput.current.value = '';
+      }
     }
   };
 
@@ -267,14 +273,49 @@ if (onSuccess) onSuccess(processedRows, { added, failed }); // ✅ 결과 정보
       {uploading && <LinearProgress variant="determinate" value={progress} sx={{ mt: 2 }} />}
 
       {result?.added !== undefined && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          ✅ 등록 성공: {result.added}건 / ❌ 실패: {result.failed}건
-        </Alert>
+  <Alert severity="success" sx={{ mb: 2 }}>
+    <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+      📊 업로드 완료!
+    </Typography>
+    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 1 }}>
+      <Chip 
+        label={`✅ 성공: ${result.added}건`} 
+        color="success" 
+        size="small" 
+      />
+      {result.failed > 0 && (
+        <Chip 
+          label={`❌ 실패: ${result.failed}건`} 
+          color="error" 
+          size="small" 
+        />
       )}
+    </Box>
+    {result.added > 0 && (
+      <Typography variant="body2" sx={{ mt: 1, color: "success.dark" }}>
+        💡 업로드된 대량실적 데이터가 시스템에 등록되었습니다.
+      </Typography>
+    )}
+    {result.added > 0 && (
+      <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: "success.main" }}>
+        🎉 아래 "완료" 버튼을 눌러 결과를 확인하세요!
+      </Typography>
+    )}
+  </Alert>
+)}
 
       {result?.errorMessage && (
         <Alert severity="error" sx={{ mt: 2 }}>
           ⚠️ 업로드 실패: {result.errorMessage}
+        </Alert>
+      )}
+
+      {/* ✅ 오류 안내 Alert 추가 */}
+      {errors.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            ⚠️ {errors.length}건의 오류가 발생했습니다. 아래 표에서 확인하세요.
+          </Typography>
         </Alert>
       )}
 
@@ -299,13 +340,24 @@ if (onSuccess) onSuccess(processedRows, { added, failed }); // ✅ 결과 정보
         </TableContainer>
       )}
 
-      <Button
-        variant="outlined"
-        onClick={handleClose}
-        sx={{ mt: 2, width: "100%" }}
-      >
-        닫기
-      </Button>
+            <Box sx={{ textAlign: "center", mt: 2 }}>
+        <Button 
+          onClick={() => {
+            if (typeof onCancel === 'function') {
+              onCancel();
+            }
+            if (result?.added > 0 && onSuccess) {
+              onSuccess(); // 성공적으로 업로드된 경우에만 onSuccess 호출
+            }
+          }} 
+          variant={result?.added > 0 ? "contained" : "outlined"}
+          color={result?.added > 0 ? "success" : "primary"}
+          size="large"
+          sx={{ minWidth: 120 }}
+        >
+          {result?.added > 0 ? "✅ 완료" : "닫기"}
+        </Button>
+      </Box>
     </Paper>
   );
 }

@@ -828,15 +828,15 @@ const result = await fetchPerformances(searchFilters);
         <DialogContent>
           {editing && (
             <AttendancePerformanceForm
-  mode="performance"
-  initialData={editing}
-  onSubmit={handleUpdate}
-  onClose={() => {
-    setShowEditModal(false);
-    setEditing(null);
+  onSubmit={handleSingleRegister}
+  onCancel={() => {
+    setShowForm(false);
   }}
-  structure={programStructureMap.hierarchical || {}}
-  flatStructure={programStructureMap.flat || {}}
+  structure={{
+    ...programStructureMap.flat,
+    flat: programStructureMap.flat,
+    hierarchical: programStructureMap.hierarchical
+  }}
 />
           )}
         </DialogContent>
@@ -898,11 +898,16 @@ const result = await fetchPerformances(searchFilters);
         <DialogTitle>대량 출석 업로드</DialogTitle>
         <DialogContent>
           <AttendancePerformanceUploadForm
-  mode="attendance"
-  onSuccess={handleUpload}
+  onSuccess={() => {
+    setShowUpload(false);
+    handleSearch();
+  }}
   onClose={() => setShowUpload(false)}
-  structure={programStructureMap.hierarchical || {}}
-  flatStructure={programStructureMap.flat || {}}
+  structure={{
+    ...programStructureMap.flat,
+    flat: programStructureMap.flat,
+    hierarchical: programStructureMap.hierarchical
+  }}
 />
         </DialogContent>
       </Dialog>

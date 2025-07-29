@@ -20,12 +20,31 @@ async function getUserId(이용자명, 성별, 세부사업명) {
 
 async function mapFields(row, structure) {
   const today = new Date();
-  const todayStr = getCurrentKoreanDate(); // ✅ 통합된 함수 사용
+  const todayStr = getCurrentKoreanDate();
   const 고유아이디 = await getUserId(row["이용자명"], row["성별"], row["세부사업명"]);
-  const struct = structure[row["세부사업명"]] || {};
-
+  
+  // ✅ 여러 구조에서 매핑 정보 찾기
+  let struct = {};
+  
+  if (structure[row["세부사업명"]]) {
+    struct = structure[row["세부사업명"]];
+  } else if (structure.flat && structure.flat[row["세부사업명"]]) {
+    struct = structure.flat[row["세부사업명"]];
+  } else if (structure.hierarchical) {
+    // 계층구조에서 세부사업명 찾기
+    for (const [team, units] of Object.entries(structure.hierarchical)) {
+      for (const [unit, subs] of Object.entries(units)) {
+        if (subs.includes(row["세부사업명"])) {
+          struct = { function: team, unit: unit, team: team };
+          break;
+        }
+      }
+      if (struct.function) break;
+    }
+  }
+  
   return {
-    날짜: normalizeDate(row["날짜"]) || todayStr, // ✅ 통합된 normalizeDate 사용
+    날짜: normalizeDate(row["날짜"]) || todayStr,
     세부사업명: row["세부사업명"] || "",
     이용자명: row["이용자명"] || "",
     성별: row["성별"] || "",
@@ -76,10 +95,43 @@ function AttendancePerformanceUploadForm({ onSuccess, onClose, structure }) {
       return "날짜 형식 오류 (YYYY-MM-DD)";
     }
 
-    if (!structure[row["세부사업명"]]) {
-      return "세부사업명에 대한 매핑 정보가 없습니다.";
-    }
+    // ✅ 계층구조와 flat 구조 모두 확인
+const hasMapping = structure[row["세부사업명"]] || 
+                   (structure.flat && structure.flat[row["세부사업명"]]) ||
+                   (structure.hierarchical && Object.values(structure.hierarchical).some(units => 
+                     Object.values(units).some(subs => subs.includes(row["세부사업명"]))
+                   ));
 
+if (!hasMapping) {
+  return "세부사업명에 대한 매핑 정보가 없습니다.";
+}
+
+    return null;
+  };
+
+  // ✅ 여기에 헬퍼 함수 추가 (validateRow 함수와 handleFile 함수 사이)
+  const findStructureMapping = (세부사업명, structure) => {
+    // 1. 직접 매핑 확인
+    if (structure[세부사업명]) {
+      return structure[세부사업명];
+    }
+    
+    // 2. flat 구조 확인
+    if (structure.flat && structure.flat[세부사업명]) {
+      return structure.flat[세부사업명];
+    }
+    
+    // 3. hierarchical 구조에서 검색
+    if (structure.hierarchical) {
+      for (const [team, units] of Object.entries(structure.hierarchical)) {
+        for (const [unit, subs] of Object.entries(units)) {
+          if (subs.includes(세부사업명)) {
+            return { function: team, unit: unit, team: team };
+          }
+        }
+      }
+    }
+    
     return null;
   };
 
@@ -200,10 +252,36 @@ function AttendancePerformanceUploadForm({ onSuccess, onClose, structure }) {
       {uploading && <LinearProgress sx={{ mb: 2 }} />}
 
       {result && result.added >= 0 && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          ✅ 신규 등록: {result.added}건 / 자동 매핑: {result.matched}건 / ❌ 실패: {result.failed}건
-        </Alert>
+  <Alert severity="success" sx={{ mb: 2 }}>
+    <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+      📊 업로드 완료!
+    </Typography>
+    <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+      <Chip 
+        label={`✅ 성공: ${result.added}건`} 
+        color="success" 
+        size="small" 
+      />
+      <Chip 
+        label={`🔄 매칭: ${result.matched}건`} 
+        color="info" 
+        size="small" 
+      />
+      {result.failed > 0 && (
+        <Chip 
+          label={`❌ 실패: ${result.failed}건`} 
+          color="error" 
+          size="small" 
+        />
       )}
+    </Box>
+    {result.added > 0 && (
+      <Typography variant="body2" sx={{ mt: 1, color: "success.dark" }}>
+        💡 업로드된 출석 데이터는 자동으로 실적에 연동되었습니다.
+      </Typography>
+    )}
+  </Alert>
+)}
 
       {result?.errorMessage && (
         <Alert severity="error" sx={{ mb: 2 }}>

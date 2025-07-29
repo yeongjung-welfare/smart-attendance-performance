@@ -102,13 +102,27 @@ export async function saveAttendanceRecords(records) {
       let 단위사업명 = record.unit || record.단위사업명 || "";
       let 팀명 = record.team || record.팀명 || "";
       if ((!기능 || !단위사업명 || !팀명) && 세부사업명) {
-        const map = await getStructureBySubProgram(세부사업명);
-        if (map) {
-          기능 = 기능 || map.function;
-          단위사업명 = 단위사업명 || map.unit;
-          팀명 = 팀명 || map.team;
-        }
-      }
+  try {
+    const map = await getStructureBySubProgram(세부사업명);
+    if (map) {
+      기능 = 기능 || map.function;
+      단위사업명 = 단위사업명 || map.unit;
+      팀명 = 팀명 || map.team;
+    } else {
+      console.warn(`⚠️ 세부사업명 "${세부사업명}"에 대한 매핑 정보 없음`);
+      // 기본값 설정으로 에러 방지
+      기능 = 기능 || "매핑정보없음";
+      단위사업명 = 단위사업명 || "매핑정보없음";  
+      팀명 = 팀명 || "매핑정보없음";
+    }
+  } catch (error) {
+    console.error(`매핑 조회 오류 (${세부사업명}):`, error);
+    // 오류 시 기본값으로 처리
+    기능 = 기능 || "오류";
+    단위사업명 = 단위사업명 || "오류";
+    팀명 = 팀명 || "오류";
+  }
+}
 
       // 횟수: 프로그램별+날짜별 1회만 집계(운영일수 기준)
       let sessions = Number(record.횟수) || 1;

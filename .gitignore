@@ -31,3 +31,4 @@ backend/.env
 .env.production
 backend/.env
 .firebase/
+.firebase/

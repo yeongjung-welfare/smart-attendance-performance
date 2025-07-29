@@ -27,3 +27,7 @@ dist-ssr
 .env.production
 backend/.env
 .firebase/
+.env.development
+.env.production
+backend/.env
+.firebase/

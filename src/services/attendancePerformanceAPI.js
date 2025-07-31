@@ -225,7 +225,7 @@ export async function fetchPerformances(filters = {}) {
   const conditions = [];
 
   // ✅ 개별 실적만 조회 (대량실적 제외)
-  conditions.push(where("실적유형", "!=", "대량"));
+  conditions.push(where("실적유형", "==", "개별"));
 
   if (filters.function) conditions.push(where("기능", "==", filters.function));
   if (filters.unit) conditions.push(where("단위사업명", "==", filters.unit));
@@ -233,6 +233,8 @@ export async function fetchPerformances(filters = {}) {
   if (filters.세부사업명) conditions.push(where("세부사업명", "==", filters.세부사업명));
   if (filters.날짜) conditions.push(where("날짜", "==", normalizeDate(filters.날짜))); // ✅ 날짜 정규화
 
+  // ✅ 고유아이디 필터 추가
+  if (filters.고유아이디) conditions.push(where("고유아이디", "==", filters.고유아이디));
   if (conditions.length > 0) q = query(q, ...conditions);
 
   const snapshot = await getDocs(q);
@@ -277,7 +279,7 @@ export async function fetchAllPerformances(filters = {}, includeType = "all") {
 
   // 실적 유형별 필터링
   if (includeType === "individual") {
-    conditions.push(where("실적유형", "!=", "대량"));
+    conditions.push(where("실적유형", "==", "개별"));
   } else if (includeType === "bulk") {
     conditions.push(where("실적유형", "==", "대량"));
   }

@@ -33,7 +33,8 @@ function AttendancePerformanceForm({
     기능: initialData?.기능 || "",
     팀명: initialData?.팀명 || "",
     단위사업명: initialData?.단위사업명 || "",
-    횟수: initialData?.횟수 || 0
+    횟수: initialData?.횟수 || 0,
+    id: initialData?.id || ""   // ✅ 수정 모드에서 필요
   });
 
   const [alert, setAlert] = useState(null);
@@ -348,8 +349,8 @@ useEffect(() => {
   return (
     <Paper sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom>
-        {mode === "attendance" ? "단건 출석 등록" : "실적 수정"}
-      </Typography>
+  실적 수정
+</Typography>
 
       {alert && (
         <Alert severity={alert.type} sx={{ mb: 2 }}>

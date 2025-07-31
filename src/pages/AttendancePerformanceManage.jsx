@@ -197,7 +197,7 @@ useEffect(() => {
   let q = collection(db, "PerformanceSummary");
   const conds = [];
   
-  conds.push(where("실적유형", "!=", "대량"));
+  conds.push(where("실적유형", "==", "개별"));
   
   // ✅ 강사 권한 시 담당 세부사업으로 제한
   if (userRole === "teacher" && subProgramOptions.length > 0) {
@@ -259,14 +259,16 @@ let searchFilters = {
   function: filters.function,
   unit: filters.unit,
   세부사업명: filters.세부사업명,
-  날짜: filters.날짜
+  날짜: filters.날짜,
+  performanceType: "개별"
 };
 
 if (userRole === "teacher" && subProgramOptions.length > 0) {
   // 강사는 담당 세부사업만 조회
   searchFilters = {
     세부사업명: filters.세부사업명 || subProgramOptions[0],
-    날짜: filters.날짜
+    날짜: filters.날짜,
+    performanceType: "개별"
   };
 }
 
@@ -427,6 +429,7 @@ const result = await fetchPerformances(searchFilters);
       단위사업명: row.단위사업명 || row.unit || "",
       횟수: row.횟수 || row.sessions || 1
     });
+    setMode("performance"); 
     setShowEditModal(true);
   };
 
@@ -790,18 +793,6 @@ const result = await fetchPerformances(searchFilters);
         </Box>
       )}
 
-      {mode === "performance" && userRole !== "teacher" && (
-        <Box sx={{ mb: 3 }}>
-          <Button
-            variant="contained"
-            onClick={() => setShowSingleRegister(true)}
-            size="large"
-          >
-            + 단건 등록
-          </Button>
-        </Box>
-      )}
-
       {/* ✅ 핵심 기능: 체크박스 출석 체크 기능 완전 복원 */}
       <AttendancePerformanceTable
         mode={mode}
@@ -828,9 +819,12 @@ const result = await fetchPerformances(searchFilters);
         <DialogContent>
           {editing && (
             <AttendancePerformanceForm
-  onSubmit={handleSingleRegister}
+            mode="performance"   // ✅ 반드시 지정 (attendance 기본값 방지)
+  initialData={editing}   // ✅ 수정 데이터 전달
+  onSubmit={handleUpdate} // ✅ 수정 시 updatePerformance 실행
   onCancel={() => {
-    setShowForm(false);
+    setShowEditModal(false);
+    setEditing(null);
   }}
   structure={{
     ...programStructureMap.flat,

@@ -92,15 +92,37 @@ function PerformanceStatsPage() {
 
   // 🔧 필터 변경 시 문자열은 trim() 처리
   const handleFilterChange = (key, value) => {
-    const trimmed = typeof value === "string" ? value.trim() : value;
-    setFilters(prev => ({
-      ...prev,
-      [key]: trimmed,
-      ...(key === "function" ? { team: "", unit: "", subProgram: "" } : {}),
-      ...(key === "team" ? { unit: "", subProgram: "" } : {}),
-      ...(key === "unit" ? { subProgram: "" } : {})
-    }));
-  };
+  let fixedValue = value;
+
+  if (key === "months" && Array.isArray(value)) {
+  fixedValue = value.map(v => {
+    if (typeof v === "string" && v.length >= 7) {
+      // yyyy-MM → MM 그대로 저장
+      return v.slice(5, 7).trim().padStart(2, "0");
+    }
+    return String(v).padStart(2, "0");
+  });
+}
+
+// ✅ months를 그대로 보존하도록 보완
+if (key === "months") {
+  setFilters(prev => ({
+    ...prev,
+    months: fixedValue,
+  }));
+  return;
+}
+
+  const trimmed = typeof fixedValue === "string" ? fixedValue.trim() : fixedValue;
+
+  setFilters(prev => ({
+    ...prev,
+    [key]: trimmed,
+    ...(key === "function" ? { team: "", unit: "", subProgram: "" } : {}),
+    ...(key === "team" ? { unit: "", subProgram: "" } : {}),
+    ...(key === "unit" ? { subProgram: "" } : {})
+  }));
+};
 
   // 집계: 횟수(운영일수)는 프로그램+날짜별 1회로만 합산(출석자 수와 무관)
   const handleSearch = async () => {

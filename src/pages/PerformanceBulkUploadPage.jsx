@@ -57,6 +57,7 @@ import { useStats } from "../contexts/StatsContext";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import useSnackbar from "../components/useSnackbar";
+import { normalizeDate } from "../utils/dateUtils";
 
 // ✅ 완전히 개선된 모달 컴포넌트 - 드롭다운 UI 개선 및 기능 완벽 보존
 function PerformanceEditModal({ open, onClose, onSave, initialData }) {
@@ -106,29 +107,36 @@ function PerformanceEditModal({ open, onClose, onSave, initialData }) {
 
   // 초기 데이터 설정
   React.useEffect(() => {
-    if (initialData) {
-      setForm({
-        ...initialData,
-        등록인원: initialData.등록인원 || 0,
-        실인원: initialData.실인원 || 0,
-        연인원: initialData.연인원 || 0,
-        건수: initialData.건수 || 0
-      });
-    } else {
-      setForm({
-        날짜: "",
-        세부사업명: "",
-        단위사업명: "",
-        기능: "",
-        팀명: "",
-        등록인원: 0,
-        실인원: 0,
-        연인원: 0,
-        건수: 0,
-        비고: ""
-      });
-    }
-  }, [initialData, open]);
+  if (initialData) {
+    setForm({
+      ...initialData,
+      날짜: initialData.날짜 ? normalizeDate(initialData.날짜) : "",
+      등록인원: initialData.등록인원 || 0,
+      실인원: initialData.실인원 || 0,
+      연인원: initialData.연인원 || 0,
+      건수: initialData.건수 || 0,
+      // 안전하게 trim 처리까지 추가 가능
+      팀명: initialData.팀명 ? initialData.팀명.trim() : "",
+      단위사업명: initialData.단위사업명 ? initialData.단위사업명.trim() : "",
+      세부사업명: initialData.세부사업명 ? initialData.세부사업명.trim() : "",
+      기능: initialData.기능 ? initialData.기능.trim() : "",
+      비고: initialData.비고 || ""
+    });
+  } else {
+    setForm({
+      날짜: "",
+      세부사업명: "",
+      단위사업명: "",
+      기능: "",
+      팀명: "",
+      등록인원: 0,
+      실인원: 0,
+      연인원: 0,
+      건수: 0,
+      비고: ""
+    });
+  }
+}, [initialData, open]);
 
   // 팀명 변경 시 단위사업명 옵션 업데이트
   React.useEffect(() => {
@@ -147,20 +155,38 @@ function PerformanceEditModal({ open, onClose, onSave, initialData }) {
 
   // 단위사업명 변경 시 세부사업명 옵션 업데이트
   React.useEffect(() => {
-    if (form.팀명 && form.단위사업명) {
-      const unitMappings = mappingData.filter(
-        item => item.teamName === form.팀명 && item.mainProgramName === form.단위사업명
-      );
-      const uniqueSubPrograms = [...new Set(unitMappings.map(item => item.subProgramName))].filter(Boolean);
-      setFilteredOptions(prev => ({ ...prev, subPrograms: uniqueSubPrograms }));
-      
-      if (form.세부사업명 && !uniqueSubPrograms.includes(form.세부사업명)) {
-        setForm(prev => ({ ...prev, 세부사업명: "", 기능: "" }));
-      }
-    } else {
-      setFilteredOptions(prev => ({ ...prev, subPrograms: [], functions: [] }));
-    }
-  }, [form.팀명, form.단위사업명, mappingData]);
+  if (form.팀명 && form.단위사업명) {
+    const norm = (s) => (s ? String(s).trim().toLowerCase() : "");
+
+    const unitMappings = mappingData.filter(item =>
+      norm(item.teamName) === norm(form.팀명) &&
+      norm(item.mainProgramName) === norm(form.단위사업명)
+    );
+
+    const uniqueSubPrograms = [...new Set(unitMappings.map(item =>
+      typeof item.subProgramName === "string" ? item.subProgramName.trim() : ""
+    ))].filter(Boolean);
+
+    setFilteredOptions(prev => ({ ...prev, subPrograms: uniqueSubPrograms }));
+
+    const normalize = (s) => (s ? String(s).trim().toLowerCase() : "");
+
+if (
+  mappingData.length > 0 &&
+  form.세부사업명 &&
+  !uniqueSubPrograms.some(item => normalize(item) === normalize(form.세부사업명))
+) {
+  setErrors(prev => ({
+    ...prev,
+    세부사업명: "선택한 세부사업명이 목록과 일치하지 않습니다. 매핑 데이터를 확인해 주세요."
+  }));
+} else {
+  setErrors(prev => ({ ...prev, 세부사업명: null }));
+}
+  } else {
+    setFilteredOptions(prev => ({ ...prev, subPrograms: [], functions: [] }));
+  }
+}, [form.팀명, form.단위사업명, mappingData, form.세부사업명]);
 
   // 세부사업명 변경 시 기능 옵션 업데이트
   React.useEffect(() => {
@@ -200,17 +226,30 @@ function PerformanceEditModal({ open, onClose, onSave, initialData }) {
   };
 
   const validateForm = () => {
-    const newErrors = {};
-    if (!form.세부사업명) newErrors.세부사업명 = "세부사업명은 필수입니다.";
-    if (!form.날짜) newErrors.날짜 = "날짜는 필수입니다.";
-    if (form.등록인원 < 0) newErrors.등록인원 = "등록인원은 0 이상이어야 합니다.";
-    if (form.실인원 < 0) newErrors.실인원 = "실인원은 0 이상이어야 합니다.";
-    if (form.연인원 < 0) newErrors.연인원 = "연인원은 0 이상이어야 합니다.";
-    if (form.건수 < 0) newErrors.건수 = "건수는 0 이상이어야 합니다.";
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const newErrors = {};
+  if (!form.세부사업명 || !form.세부사업명.trim()) {
+  newErrors.세부사업명 = "세부사업명은 필수입니다.";
+} else {
+  // 정규화된 옵션 검증
+  const normalize = (s) => (s ? String(s).trim().toLowerCase() : "");
+  if (
+    filteredOptions.subPrograms.length > 0 &&
+    !filteredOptions.subPrograms.some(
+      (opt) => normalize(opt) === normalize(form.세부사업명)
+    )
+  ) {
+    newErrors.세부사업명 = "세부사업명이 옵션 목록에 없습니다.";
+  }
+}
+  if (!form.날짜) newErrors.날짜 = "날짜는 필수입니다.";
+  if (form.등록인원 < 0) newErrors.등록인원 = "등록인원은 0 이상이어야 합니다.";
+  if (form.실인원 < 0) newErrors.실인원 = "실인원은 0 이상이어야 합니다.";
+  if (form.연인원 < 0) newErrors.연인원 = "연인원은 0 이상이어야 합니다.";
+  if (form.건수 < 0) newErrors.건수 = "건수는 0 이상이어야 합니다.";
+  
+  setErrors(newErrors);
+  return Object.keys(newErrors).length === 0;
+};
 
   const handleSubmit = () => {
     if (!validateForm()) return;
@@ -433,9 +472,13 @@ function PerformanceEditModal({ open, onClose, onSave, initialData }) {
           {/* ✅ 완전히 수정된 세부사업명 드롭다운 */}
           <Grid item xs={12} sm={6}>
             <Autocomplete
-              options={filteredOptions.subPrograms}
-              value={form.세부사업명 || null}
-              onChange={handleAutocompleteChange("세부사업명")}
+  options={filteredOptions.subPrograms}
+  value={
+    filteredOptions.subPrograms.find(
+      (opt) => opt.trim().toLowerCase() === (form.세부사업명 || "").trim().toLowerCase()
+    ) || null
+  }
+  onChange={handleAutocompleteChange("세부사업명")}
               disabled={!form.단위사업명}
               renderInput={(params) => (
                 <TextField
@@ -703,25 +746,7 @@ function PerformanceBulkUploadPage() {
     console.log("📊 전체 performances 데이터:", performances);
     
     // ✅ 수정된 필터링 로직 - 변수명 오류 해결
-    const filtered = performances.filter(p => {
-      const isBulkType = p.실적유형 === "대량" || 
-                         p.performanceType === "대량" || 
-                         (p.실적유형 !== "개별" && 
-                          p.performanceType !== "개별" && 
-                          !p.이용자명 && 
-                          !p.고유아이디); // 이용자명이 없는 것도 대량실적으로 간주
-      
-      console.log("📊 실적 항목:", {
-        id: p.id,
-        실적유형: p.실적유형,
-        performanceType: p.performanceType,
-        세부사업명: p.세부사업명,
-        이용자명: p.이용자명,
-        isBulkType: isBulkType // ✅ 변수명 수정
-      });
-      
-      return isBulkType; // ✅ 올바른 변수명 사용
-    });
+    const filtered = performances.filter(p => p.실적유형 === "대량");
     
     console.log("📊 필터링된 대량실적:", filtered);
     return filtered;
@@ -804,9 +829,24 @@ function PerformanceBulkUploadPage() {
   };
 
   const handleEdit = (row) => {
-    console.log("📊 수정할 데이터:", row);
-    setEditRow(row);
-  };
+  let teamName = row.팀명 || "";
+  let mainProgramName = row.단위사업명 || "";
+
+  // 만약 별도 필드 없이 한 필드에 합쳐져 있으면 분리 처리
+  if ((!teamName || !mainProgramName) && row.teamAndUnit) {
+    const parts = row.teamAndUnit.trim().split(/\s+/);
+    teamName = parts[0] || teamName;
+    mainProgramName = parts[1] || mainProgramName;
+  }
+
+  setEditRow({
+    ...row,
+    팀명: teamName.trim(),
+    단위사업명: mainProgramName.trim(),
+    세부사업명: (row.세부사업명 || "").trim(),
+    기능: (row.기능 || "").trim(),
+  });
+};
 
   const handleDelete = async (row) => {
     if (!window.confirm("정말로 삭제하시겠습니까?")) return;
@@ -845,30 +885,39 @@ function PerformanceBulkUploadPage() {
   };
 
   const handleAddSave = async (data) => {
-    try {
-      console.log("📊 추가할 데이터:", data);
-      await savePerformance({ ...data, 실적유형: "대량" });
-      setAddOpen(false);
-      await loadBulkPerformances();
-      showSnackbar("대량실적 추가 완료", "success");
-    } catch (err) {
-      console.error("📊 추가 오류:", err);
-      showSnackbar("추가 실패: " + err.message, "error");
-    }
-  };
+  try {
+    const normalizedData = {
+      ...data,
+      날짜: normalizeDate(data.날짜),  // 날짜 정규화 추가
+      실적유형: "대량"
+    };
+    await savePerformance(normalizedData);
+    setAddOpen(false);
+    await loadBulkPerformances();
+    showSnackbar("대량실적 추가 완료", "success");
+  } catch (err) {
+    console.error("📊 추가 오류:", err);
+    showSnackbar("추가 실패: " + err.message, "error");
+  }
+};
 
-  const handleEditSave = async (data) => {
-    try {
-      console.log("📊 수정할 데이터:", data);
-      await updatePerformance(data.id, { ...data, 실적유형: "대량" });
-      setEditRow(null);
-      await loadBulkPerformances();
-      showSnackbar("대량실적 수정 완료", "success");
-    } catch (err) {
-      console.error("📊 수정 오류:", err);
-      showSnackbar("수정 실패: " + err.message, "error");
-    }
-  };
+const handleEditSave = async (data) => {
+  try {
+    const normalizedData = {
+      ...data,
+      날짜: normalizeDate(data.날짜),  // 날짜 정규화 추가
+      실적유형: "대량"
+    };
+    console.log("📊 수정할 데이터:", normalizedData);
+    await updatePerformance(data.id, normalizedData);  // normalizedData 전달하도록 수정
+    setEditRow(null);
+    await loadBulkPerformances();
+    showSnackbar("대량실적 수정 완료", "success");
+  } catch (err) {
+    console.error("📊 수정 오류:", err);
+    showSnackbar("수정 실패: " + err.message, "error");
+  }
+};
 
   const handleUploadSuccess = async (uploadedData, result) => {
   console.log("📥 업로드 완료, 데이터 갱신 시작...", uploadedData, result);

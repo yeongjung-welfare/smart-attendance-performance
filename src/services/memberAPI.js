@@ -86,6 +86,7 @@ export async function getAllMembers(retries = 3) {
 
       const processedData = {
         id: doc.id,
+        userId: data.userId || "", // ✅ userId 보장
         ...data,
         birthdate: birthdateStr || "",
         registrationDate: safeBirthdateExtract(data.registrationDate) || "",

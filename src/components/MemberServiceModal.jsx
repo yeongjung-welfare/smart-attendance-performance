@@ -24,6 +24,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { fetchPerformances, fetchAttendances } from "../services/attendancePerformanceAPI";
 import { db } from '../firebase';
 
 function MemberServiceModal({ open, onClose, member }) {
@@ -52,88 +53,91 @@ function MemberServiceModal({ open, onClose, member }) {
   }, [member, open]);
 
   const loadMemberServices = async (memberId, memberName) => {
-    setLoading(true);
-    console.log('🔍 서비스 데이터 조회 시작:', { memberId, memberName }); // ✅ 추가
-    try {
-      // 1. 현재 이용 중인 서비스 조회 (SubProgramUsers)
-      const currentServicesQuery = query(
-  collection(db, 'SubProgramUsers'),
-  where('이용자명', '==', memberName),  // ✅ 이용자명으로 검색
-  where('이용상태', '==', '이용')
-);
-      const currentServicesSnapshot = await getDocs(currentServicesQuery);
-      const currentServices = currentServicesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      console.log('📋 현재 서비스 조회 결과:', currentServices); // ✅ 추가
+  setLoading(true);
+  try {
+    const userKey = member.userId || member.고유아이디 || memberId;
 
-      // 2. 종결된 서비스 조회 (SubProgramUsers)
-      const serviceHistoryQuery = query(
-  collection(db, 'SubProgramUsers'),
-  where('이용자명', '==', memberName),  // ✅ 수정
-  where('이용상태', '==', '종결')
-);
-      const serviceHistorySnapshot = await getDocs(serviceHistoryQuery);
-      const serviceHistory = serviceHistorySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      console.log('📋 서비스 이력 조회 결과:', serviceHistory); // ✅ 추가
+    // 1. 현재 이용 중인 서비스
+    const currentServicesQuery = query(
+      collection(db, 'SubProgramUsers'),
+      where('고유아이디', '==', userKey),
+      where('이용자명', '==', memberName), // ✅ 보조조건
+      where('이용상태', '==', '이용')
+    );
+    const currentServicesSnapshot = await getDocs(currentServicesQuery);
+    const currentServices = currentServicesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
-      // 3. 출석 통계 조회 (AttendanceRecords)
-      const attendanceQuery = query(
-        collection(db, 'AttendanceRecords'),
-        where('이용자명', '==', memberName)
-      );
-      const attendanceSnapshot = await getDocs(attendanceQuery);
-      const attendanceRecords = attendanceSnapshot.docs.map(doc => doc.data());
-      
-      const totalRecords = attendanceRecords.length;
-      const attendedDays = attendanceRecords.filter(record => record.출석여부 === true).length;
-      const absentDays = totalRecords - attendedDays;
-      const attendanceRate = totalRecords > 0 ? Math.round((attendedDays / totalRecords) * 100) : 0;
+    // 2. 서비스 이력
+    const serviceHistoryQuery = query(
+      collection(db, 'SubProgramUsers'),
+      where('고유아이디', '==', userKey),
+      where('이용자명', '==', memberName), // ✅ 보조조건
+      where('이용상태', '==', '종결')
+    );
+    const serviceHistorySnapshot = await getDocs(serviceHistoryQuery);
+    const serviceHistory = serviceHistorySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
-      // 4. 실적 통계 조회 (PerformanceSummary)
-      const performanceQuery = query(
-        collection(db, 'PerformanceSummary'),
-        where('이용자명', '==', memberName)
-      );
-      const performanceSnapshot = await getDocs(performanceQuery);
-      const performanceRecords = performanceSnapshot.docs.map(doc => doc.data());
-      
-      const totalPerformanceRecords = performanceRecords.length;
-      const individualRecords = performanceRecords.filter(record => record.실적유형 === '개별').length;
-      const bulkRecords = performanceRecords.filter(record => record.실적유형 === '대량').length;
+    // 3. 출석 통계
+    const attendanceQuery = query(
+      collection(db, 'AttendanceRecords'),
+      where('고유아이디', '==', userKey),
+      where('이용자명', '==', memberName) // ✅ 보조조건
+    );
+    const attendanceSnapshot = await getDocs(attendanceQuery);
+    const attendanceRecords = attendanceSnapshot.docs.map(doc => doc.data());
 
-      setServiceData({
-        currentServices,
-        serviceHistory,
-        attendanceStats: {
-          totalRecords,
-          attendedDays,
-          absentDays,
-          attendanceRate,
-          recentRecords: attendanceRecords
-            .sort((a, b) => new Date(b.날짜) - new Date(a.날짜))
-            .slice(0, 5)
-        },
-        performanceStats: {
-          totalRecords: totalPerformanceRecords,
-          individualRecords,
-          bulkRecords,
-          recentRecords: performanceRecords
-            .sort((a, b) => new Date(b.날짜) - new Date(a.날짜))
-            .slice(0, 5)
-        }
-      });
+    const totalRecords = attendanceRecords.length;
+    const attendedDays = attendanceRecords.filter(record => record.출석여부 === true).length;
+    const absentDays = totalRecords - attendedDays;
+    const attendanceRate = totalRecords > 0 ? Math.round((attendedDays / totalRecords) * 100) : 0;
 
-    } catch (error) {
-      console.error('서비스 데이터 로드 오류:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // 4. 실적 통계
+    const performanceQuery = query(
+      collection(db, 'PerformanceSummary'),
+      where('고유아이디', '==', userKey),
+      where('이용자명', '==', memberName) // ✅ 보조조건
+    );
+    const performanceSnapshot = await getDocs(performanceQuery);
+    const performanceRecords = performanceSnapshot.docs.map(doc => doc.data());
+
+    const totalPerformanceRecords = performanceRecords.length;
+    const individualRecords = performanceRecords.filter(record => record.실적유형 === '개별').length;
+    const bulkRecords = performanceRecords.filter(record => record.실적유형 === '대량').length;
+
+    setServiceData({
+      currentServices,
+      serviceHistory,
+      attendanceStats: {
+        totalRecords,
+        attendedDays,
+        absentDays,
+        attendanceRate,
+        recentRecords: attendanceRecords
+          .sort((a, b) => new Date(b.날짜) - new Date(a.날짜))
+          .slice(0, 5)
+      },
+      performanceStats: {
+        totalRecords: totalPerformanceRecords,
+        individualRecords,
+        bulkRecords,
+        recentRecords: performanceRecords
+          .sort((a, b) => new Date(b.날짜) - new Date(a.날짜))
+          .slice(0, 5)
+      }
+    });
+
+  } catch (error) {
+    console.error('서비스 데이터 로드 오류:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleTabChange = (event, newValue) => {
     setCurrentTab(newValue);

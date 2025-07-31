@@ -31,7 +31,8 @@ function ExportButton({
     ["phone", "연락처"],
     ["address", "주소"],
     ["district", "행정동"],
-    ["incomeType", "소득구분"]
+    ["incomeType", "소득구분"],
+    ["subProgram", "세부사업명"] // 반드시 추가!
   ];
 
   const getAutoHeaders = () => {
@@ -60,25 +61,39 @@ function ExportButton({
   };
 
   const handleExport = () => {
-    if (!Array.isArray(data) || data.length === 0) {
-      alert("다운로드할 데이터가 없습니다.");
-      return;
+  if (!Array.isArray(data) || data.length === 0) {
+    alert("다운로드할 데이터가 없습니다.");
+    return;
+  }
+  
+  // 원본 데이터 중 1월 어르신 라인댄스 필터 로그 (선택)
+  console.log(
+    "[ExportButton] 엑셀 변환 직전 1월 어르신 라인댄스 데이터:",
+    data.filter(d => d.subProgram === "어르신 라인댄스" && String(d.month).padStart(2, "0") === "01")
+  );
+
+  // 실제 엑셀용 데이터 가공
+  const exportData = data.map((row) => {
+    const formatted = {};
+    EXPORT_HEADERS.forEach(([key, label]) => {
+      formatted[label] = row[key] !== undefined && row[key] !== null ? row[key] : "";
+    });
+    return formatted;
+  });
+
+  // ✅ 여기! exportData 확인 로그를 넣는 위치
+  exportData.forEach(row => {
+    if (row["세부사업명"]?.trim() === "어르신 라인댄스" && row["월"] === "01") {
+      console.log("⚠️ 엑셀 내보내기 row:", row);
     }
+  });
 
-    const exportData = data.map((row) => {
-      const formatted = {};
-      EXPORT_HEADERS.forEach(([key, label]) => {
-        formatted[label] = row[key] !== undefined && row[key] !== null ? row[key] : "";
-      });
-      return formatted;
-    });
+  // 이후부터 엑셀 생성 및 저장 로직...
+  const worksheet = XLSX.utils.json_to_sheet(exportData, { skipHeader: false });
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData, { skipHeader: true });
-
-    // ✅ 첫 행에 한글 헤더 삽입
-    XLSX.utils.sheet_add_aoa(worksheet, [EXPORT_HEADERS.map(([, label]) => label)], {
-      origin: "A1"
-    });
+  XLSX.utils.sheet_add_aoa(worksheet, [EXPORT_HEADERS.map(([, label]) => label)], {
+    origin: "A1"
+  });
 
     // ✅ 열 너비 자동 설정
     const colWidths = EXPORT_HEADERS.map(([key, label]) => {

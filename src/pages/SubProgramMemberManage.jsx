@@ -859,6 +859,32 @@ const getActiveMembers = () => {
                   선택 삭제 ({selectedIds.length})
                 </Button>
               </Grid>
+
+              {/* 엑셀 다운로드 버튼 추가 */}
+  <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+    <ExportButton
+  data={filteredAndSearchedMembers}   // 필터/검색된 이용자 데이터
+  fileName="세부사업별_이용자목록"
+  label="엑셀 다운로드"
+  sheetName="세부사업별이용자"
+  addDateToFileName={true}
+  headers={[
+    ["팀명", "팀명"],
+    ["단위사업명", "단위사업명"],
+    ["세부사업명", "세부사업명"],
+    ["이용자명", "이용자명"],
+    ["성별", "성별"],
+    ["생년월일", "생년월일"],
+    ["연락처", "연락처"],
+    ["연령대", "연령대"],
+    ["행정동", "행정동"],
+    ["소득구분", "소득구분"],
+    ["이용상태", "이용상태"],
+    ["유료무료", "유료무료"],
+    ["고유아이디", "고유아이디"]
+  ]}
+/>
+  </Grid>
             </>
           )}
         </Grid>

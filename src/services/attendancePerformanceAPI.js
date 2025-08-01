@@ -1,6 +1,7 @@
 import {
   collection,
   getDocs,
+  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -24,10 +25,16 @@ export async function getProgramSessionsForMonth(세부사업명, yearMonth) {
 }
 
 // 고유아이디 조회
-export async function getUserId(이용자명, 세부사업명) {
+// ✅ 동명이인 모두 반환 (고유아이디 배열)
+export async function getUserIds(이용자명, 성별, 세부사업명) {
   const members = await getSubProgramMembers({ 세부사업명 });
-  const member = members.find(m => m.이용자명 === 이용자명);
-  return member ? member.고유아이디 : "";
+  let matches = members.filter(m => m.이용자명 === 이용자명 && m.성별 === 성별);
+
+  if (matches.length === 0) {
+    matches = members.filter(m => m.이용자명 === 이용자명);
+  }
+
+  return matches.map(m => m.고유아이디);
 }
 
 // ✅ 월별 출석 횟수 조회 함수 추가
@@ -58,42 +65,37 @@ export async function getAttendanceCountForMonth(세부사업명, 이용자명, 
   }
 }
 
-// 출석 단건/일괄 등록 (중복 제외, 신규만 등록) + 실적 자동 생성/업데이트
+// 출석 단건/일괄 등록 (동명이인 지원 + 중복제외 + 횟수/건수 반영)
 export async function saveAttendanceRecords(records) {
   const collectionRef = collection(db, "AttendanceRecords");
   const perfCollectionRef = collection(db, "PerformanceSummary");
   const results = [];
 
   for (const record of records) {
-    const 출석여부 = isPresent(record.출석여부);
-    const normalizedDate = normalizeDate(record.날짜 || record.date); // ✅ 날짜 정규화 추가
-
-    const q = query(
-      collectionRef,
-      where("날짜", "==", normalizedDate), // ✅ 정규화된 날짜 사용
-      where("세부사업명", "==", record.세부사업명 || record.subProgram),
-      where("이용자명", "==", record.이용자명 || record.memberName)
-    );
-
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      results.push({ success: false, record, error: "이미 등록된 출석입니다." });
-      continue;
-    }
-
     try {
-      // ✅ 필드명 통일 처리
       const 세부사업명 = record.세부사업명 || record.subProgram || "";
       const 이용자명 = record.이용자명 || record.memberName || "";
       const 성별 = record.성별 || record.gender || "";
       const 연락처 = record.연락처 || record.phone || "";
       const 내용 = record["내용(특이사항)"] || record.note || "";
+      const normalizedDate = normalizeDate(record.날짜 || record.date);
+      const 출석여부 = isPresent(record.출석여부);
+
+      // ✅ 고유아이디 여러 개 조회
+      const 고유아이디목록 = record.고유아이디
+        ? [record.고유아이디]
+        : await getUserIds(이용자명, 성별, 세부사업명);
+
+      if (고유아이디목록.length === 0) {
+        results.push({ success: false, record, error: "고유아이디 없음 (동명이인/미등록)" });
+        continue;
+      }
 
       // 유료/무료 자동 연동
       let feeType = record.feeType || record.유료무료 || "";
       if (!feeType && 세부사업명 && 이용자명) {
         const members = await getSubProgramMembers({ 세부사업명 });
-        const member = members.find(m => m.이용자명 === 이용자명);
+        const member = members.find(m => m.이용자명 === 이용자명 && m.성별 === 성별);
         if (member) feeType = member.유료무료 || "";
       }
 
@@ -102,65 +104,28 @@ export async function saveAttendanceRecords(records) {
       let 단위사업명 = record.unit || record.단위사업명 || "";
       let 팀명 = record.team || record.팀명 || "";
       if ((!기능 || !단위사업명 || !팀명) && 세부사업명) {
-  try {
-    const map = await getStructureBySubProgram(세부사업명);
-    if (map) {
-      기능 = 기능 || map.function;
-      단위사업명 = 단위사업명 || map.unit;
-      팀명 = 팀명 || map.team;
-    } else {
-      console.warn(`⚠️ 세부사업명 "${세부사업명}"에 대한 매핑 정보 없음`);
-      // 기본값 설정으로 에러 방지
-      기능 = 기능 || "매핑정보없음";
-      단위사업명 = 단위사업명 || "매핑정보없음";  
-      팀명 = 팀명 || "매핑정보없음";
-    }
-  } catch (error) {
-    console.error(`매핑 조회 오류 (${세부사업명}):`, error);
-    // 오류 시 기본값으로 처리
-    기능 = 기능 || "오류";
-    단위사업명 = 단위사업명 || "오류";
-    팀명 = 팀명 || "오류";
-  }
-}
+        try {
+          const map = await getStructureBySubProgram(세부사업명);
+          if (map) {
+            기능 = 기능 || map.function;
+            단위사업명 = 단위사업명 || map.unit;
+            팀명 = 팀명 || map.team;
+          }
+        } catch {
+          기능 = 기능 || "오류";
+          단위사업명 = 단위사업명 || "오류";
+          팀명 = 팀명 || "오류";
+        }
+      }
 
-      // 횟수: 프로그램별+날짜별 1회만 집계(운영일수 기준)
+      // ✅ 횟수 / 건수 계산
       let sessions = Number(record.횟수) || 1;
-      // 건수는 연인원/실인원 산출 불가 실적만 입력
       let cases = (!record.연인원 && !record.실인원) ? (Number(record.건수) || 0) : 0;
 
-      const 고유아이디 = await getUserId(이용자명, 세부사업명);
-
-      await addDoc(collectionRef, {
-        날짜: normalizedDate, // ✅ 문자열로 저장
-        세부사업명,
-        이용자명,
-        성별,
-        연락처,
-        "내용(특이사항)": 내용,
-        고유아이디,
-        출석여부,
-        feeType,
-        기능,
-        단위사업명,
-        팀명,
-        sessions,
-        cases,
-        createdAt: getCurrentKoreanDate() // ✅ 문자열로 저장
-      });
-
-      // 실적 자동 생성/업데이트
-      if (이용자명 && normalizedDate && 세부사업명) {
-        const perfQ = query(
-          perfCollectionRef,
-          where("날짜", "==", normalizedDate), // ✅ 정규화된 날짜 사용
-          where("세부사업명", "==", 세부사업명),
-          where("이용자명", "==", 이용자명)
-        );
-        const perfSnap = await getDocs(perfQ);
-
-        let docData = {
-          날짜: normalizedDate, // ✅ 문자열로 저장
+      // ✅ 동명이인 각각 저장
+      for (const 고유아이디 of 고유아이디목록) {
+        const docData = {
+          날짜: normalizedDate,
           세부사업명,
           이용자명,
           성별,
@@ -174,12 +139,36 @@ export async function saveAttendanceRecords(records) {
           팀명,
           sessions,
           cases,
-          실적유형: "개별", // ✅ 실적유형 명시
-          createdAt: getCurrentKoreanDate() // ✅ 문자열로 저장
+          createdAt: getCurrentKoreanDate()
         };
 
+        // 중복 체크
+        const q = query(
+          collectionRef,
+          where("날짜", "==", normalizedDate),
+          where("세부사업명", "==", 세부사업명),
+          where("고유아이디", "==", 고유아이디)
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          results.push({ success: false, record, error: `이미 등록된 출석 (${고유아이디})` });
+          continue;
+        }
+
+        // 출석 저장
+        await addDoc(collectionRef, docData);
+
+        // 실적 동기화
+        const perfQ = query(
+          perfCollectionRef,
+          where("날짜", "==", normalizedDate),
+          where("세부사업명", "==", 세부사업명),
+          where("고유아이디", "==", 고유아이디)
+        );
+        const perfSnap = await getDocs(perfQ);
+
         if (perfSnap.empty) {
-          await addDoc(perfCollectionRef, docData);
+          await addDoc(perfCollectionRef, { ...docData, 실적유형: "개별" });
         } else {
           const prev = perfSnap.docs[0].data();
           const perfDocRef = doc(db, "PerformanceSummary", perfSnap.docs[0].id);
@@ -189,9 +178,9 @@ export async function saveAttendanceRecords(records) {
             cases: (Number(prev.cases) || 0) + cases
           });
         }
-      }
 
-      results.push({ success: true, record });
+        results.push({ success: true, record, 고유아이디 });
+      }
     } catch (err) {
       results.push({ success: false, record, error: err.message });
     }
@@ -309,12 +298,28 @@ export async function savePerformance(data) {
   if (isUserPerformance) {
     const normalizedDate = normalizeDate(data.날짜); // ✅ 날짜 정규화
 
-    const q = query(
-      collectionRef,
-      where("날짜", "==", normalizedDate), // ✅ 정규화된 날짜 사용
-      where("세부사업명", "==", data.세부사업명),
-      where("이용자명", "==", data.이용자명)
-    );
+    const 고유아이디목록 = data.고유아이디
+  ? [data.고유아이디]
+  : await getUserIds(data.이용자명, data.성별, data.세부사업명);
+
+if (고유아이디목록.length === 0) {
+  throw new Error("고유아이디 없음 (동명이인/미등록)");
+}
+
+for (const 고유아이디 of 고유아이디목록) {
+  const q = query(
+    collectionRef,
+    where("날짜", "==", normalizedDate),
+    where("세부사업명", "==", data.세부사업명),
+    where("고유아이디", "==", 고유아이디)
+  );
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) continue;
+
+  const docData = { ...data, 날짜: normalizedDate, 고유아이디, 실적유형: "개별" };
+  const docRef = await addDoc(collectionRef, docData);
+  results.push({ id: docRef.id, ...docData });
+}
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
       throw new Error("이미 등록된 실적입니다.");
@@ -324,7 +329,9 @@ export async function savePerformance(data) {
   let docData = { ...data };
   docData.날짜 = normalizeDate(docData.날짜); // ✅ 날짜 정규화
 
-  docData.고유아이디 = await getUserId(docData.이용자명, docData.세부사업명);
+  const ids = await getUserIds(docData.이용자명, docData.성별, docData.세부사업명);
+if (ids.length === 0) throw new Error("고유아이디 없음 (동명이인/미등록)");
+docData.고유아이디 = ids[0]; // 여러 개일 경우 첫 번째 사용
 
   // 유료/무료 자동 연동
   if (!docData.feeType && docData.세부사업명 && docData.이용자명) {
@@ -351,16 +358,12 @@ export async function savePerformance(data) {
   return { id: docRef.id, ...docData };
 }
 
-// 실적 수정 (+ 출석 데이터 동기화) - 완전히 개선된 버전
+// 실적 수정 (+ 출석 데이터 동기화) - 최종 버전
 export async function updatePerformance(id, data) {
-  const docRef = doc(db, "PerformanceSummary", id);
-
-  // ✅ undefined 값 완전 제거 및 데이터 정제
+  // ✅ undefined/null 값 제거
   const cleanData = {};
-
-  // 각 필드를 안전하게 처리
   Object.entries(data).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && key !== 'id') {
+    if (value !== undefined && value !== null && key !== "id") {
       cleanData[key] = value;
     }
   });
@@ -370,14 +373,17 @@ export async function updatePerformance(id, data) {
     cleanData.날짜 = normalizeDate(cleanData.날짜);
   }
 
-  // 필수 필드 자동 처리
+  // 필수 필드 처리 및 고유아이디 조회
   if (cleanData.이용자명 && cleanData.세부사업명) {
-    cleanData.고유아이디 = await getUserId(cleanData.이용자명, cleanData.세부사업명);
+    const ids = await getUserIds(cleanData.이용자명, cleanData.성별, cleanData.세부사업명);
+if (ids.length === 0) throw new Error("고유아이디 없음 (동명이인/미등록)");
+cleanData.고유아이디 = ids[0];
 
-    // 유료/무료 자동 연동
     if (!cleanData.feeType) {
       const members = await getSubProgramMembers({ 세부사업명: cleanData.세부사업명 });
-      const member = members.find(m => m.이용자명 === cleanData.이용자명);
+      const member = members.find(
+        m => m.이용자명 === cleanData.이용자명 && m.고유아이디 === cleanData.고유아이디
+      );
       if (member) cleanData.feeType = member.유료무료 || "";
     }
   }
@@ -386,50 +392,57 @@ export async function updatePerformance(id, data) {
     cleanData.출석여부 = isPresent(cleanData.출석여부);
   }
 
-  console.log("✅ API에서 정제된 데이터:", cleanData);
-  await updateDoc(docRef, cleanData);
+  console.log("✅ updatePerformance 적용 데이터:", cleanData);
 
-  // 출석 데이터 동기화
-  if (cleanData.이용자명 && cleanData.날짜 && cleanData.세부사업명) {
-    const attendCol = collection(db, "AttendanceRecords");
-    const q = query(
-      attendCol,
-      where("날짜", "==", cleanData.날짜), // ✅ 정규화된 날짜 사용
+  // ✅ PerformanceSummary에서 해당 고유아이디 전부 업데이트
+  const perfQ = query(
+    collection(db, "PerformanceSummary"),
+    where("날짜", "==", cleanData.날짜),
+    where("세부사업명", "==", cleanData.세부사업명),
+    where("고유아이디", "==", cleanData.고유아이디) // 🔥 고유아이디 기준
+  );
+  const perfSnap = await getDocs(perfQ);
+
+  for (const docSnap of perfSnap.docs) {
+    await updateDoc(doc(db, "PerformanceSummary", docSnap.id), cleanData);
+  }
+
+  // ✅ AttendanceRecords도 고유아이디 기준으로 동기화
+  if (cleanData.이용자명 && cleanData.날짜 && cleanData.세부사업명 && cleanData.고유아이디) {
+    const attendQ = query(
+      collection(db, "AttendanceRecords"),
+      where("날짜", "==", cleanData.날짜),
       where("세부사업명", "==", cleanData.세부사업명),
-      where("이용자명", "==", cleanData.이용자명)
+      where("고유아이디", "==", cleanData.고유아이디) // 🔥 고유아이디 기준
     );
-    const snapshot = await getDocs(q);
+    const attendSnap = await getDocs(attendQ);
 
-    for (const docSnap of snapshot.docs) {
+    for (const docSnap of attendSnap.docs) {
       const syncData = { ...cleanData };
-      delete syncData.id; // id 필드 제거
+      delete syncData.id;
       await updateDoc(doc(db, "AttendanceRecords", docSnap.id), syncData);
     }
   }
 
-  return { id, ...cleanData };
+  return { ...cleanData };
 }
 
 // 실적 삭제 (+ 출석 데이터 동기화)
 export async function deletePerformance(id) {
   const perfDocRef = doc(db, "PerformanceSummary", id);
-  const perfSnap = await getDocs(query(collection(db, "PerformanceSummary"), where("__name__", "==", id)));
-
-  let perfData = null;
-  if (!perfSnap.empty) {
-    perfData = perfSnap.docs[0].data();
-  }
+  const perfSnap = await getDoc(perfDocRef);
+let perfData = perfSnap.exists() ? perfSnap.data() : null;
 
   await deleteDoc(perfDocRef);
 
   if (perfData && perfData.이용자명 && perfData.날짜 && perfData.세부사업명) {
     const attendCol = collection(db, "AttendanceRecords");
     const q = query(
-      attendCol,
-      where("날짜", "==", perfData.날짜),
-      where("세부사업명", "==", perfData.세부사업명),
-      where("이용자명", "==", perfData.이용자명)
-    );
+  attendCol,
+  where("날짜", "==", perfData.날짜),
+  where("세부사업명", "==", perfData.세부사업명),
+  where("고유아이디", "==", perfData.고유아이디)
+);
     const snapshot = await getDocs(q);
 
     for (const docSnap of snapshot.docs) {
@@ -489,61 +502,62 @@ export async function uploadPerformanceData(rows) {
       continue;
     }
 
-    const q = query(
-      collectionRef,
-      where("날짜", "==", 날짜), // ✅ 정규화된 날짜 사용
-      where("세부사업명", "==", 세부사업명),
-      where("이용자명", "==", 이용자명)
-    );
-    const snapshot = await getDocs(q);
+    // ✅ 동명이인 모두 조회
+const 고유아이디목록 = row.고유아이디
+  ? [row.고유아이디]
+  : await getUserIds(이용자명, row.성별, 세부사업명);
 
-    if (!snapshot.empty) {
-      results.push({ success: false, row, error: "중복 데이터 존재" });
-      continue;
-    }
+if (고유아이디목록.length === 0) {
+  results.push({ success: false, row, error: "고유아이디 없음 (동명이인/미등록)" });
+  continue;
+}
 
-    try {
-      const 고유아이디 = await getUserId(이용자명, 세부사업명);
-      let feeType = row.feeType || row.유료무료 || "";
+for (const 고유아이디 of 고유아이디목록) {
+  const q = query(
+    collectionRef,
+    where("날짜", "==", 날짜),
+    where("세부사업명", "==", 세부사업명),
+    where("고유아이디", "==", 고유아이디)
+  );
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    results.push({ success: false, row, error: `중복 데이터 존재 (${고유아이디})` });
+    continue;
+  }
 
-      if (!feeType && 세부사업명 && 이용자명) {
-        const members = await getSubProgramMembers({ 세부사업명 });
-        const member = members.find(m => m.이용자명 === 이용자명);
-        if (member) feeType = member.유료무료 || "";
-      }
+  let feeType = row.feeType || row.유료무료 || "";
+  if (!feeType && 세부사업명 && 이용자명) {
+    const members = await getSubProgramMembers({ 세부사업명 });
+    const member = members.find(m => m.고유아이디 === 고유아이디);
+    if (member) feeType = member.유료무료 || "";
+  }
 
-      // 횟수: 프로그램별+날짜별 1회만 집계
-      let sessions = Number(row.횟수) || 1;
+  const docData = {
+    function: 기능,
+    unit: 단위사업명,
+    team: 팀명,
+    세부사업명,
+    이용자명,
+    고유아이디,
+    성별: row.성별 || "",
+    result: row.출석여부 || "",
+    "내용(특이사항)": row["내용(특이사항)"] || "",
+    날짜,
+    등록인원: Number(row.등록인원) || 0,
+    실인원: Number(row.실인원) || 0,
+    연인원: Number(row.연인원) || 0,
+    건수: (!row.연인원 && !row.실인원) ? (Number(row.건수) || 0) : 0,
+    sessions: Number(row.횟수) || 1,
+    출석여부: isPresent(row.출석여부),
+    feeType,
+    비고: row.비고 || "",
+    실적유형: "개별",
+    createdAt: getCurrentKoreanDate()
+  };
 
-      const docData = {
-        function: 기능,
-        unit: 단위사업명,
-        team: 팀명,
-        세부사업명,
-        이용자명,
-        고유아이디,
-        성별: row.성별 || "",
-        result: row.출석여부 || "",
-        "내용(특이사항)": row["내용(특이사항)"] || "",
-        날짜, // ✅ 정규화된 날짜
-        등록인원: Number(row.등록인원) || 0,
-        실인원: Number(row.실인원) || 0,
-        연인원: Number(row.연인원) || 0,
-        건수: Number(row.건수) || 0,
-        cases: Number(row.건수) || 0,
-        sessions,
-        출석여부: isPresent(row.출석여부),
-        feeType,
-        비고: row.비고 || "",
-        실적유형: "개별", // ✅ 실적유형 명시
-        createdAt: getCurrentKoreanDate() // ✅ 문자열로 저장
-      };
-
-      await addDoc(collectionRef, docData);
-      results.push({ success: true, row });
-    } catch (err) {
-      results.push({ success: false, row, error: err.message });
-    }
+  await addDoc(collectionRef, docData);
+  results.push({ success: true, row, 고유아이디 });
+}
   }
 
   return results;
@@ -652,6 +666,18 @@ export async function uploadBulkPerformanceSummary(rows) {
 
 // 출석 대량 업로드 (신규만 등록, 실적 자동 생성/업데이트)
 export async function uploadAttendanceData(rows) {
+  for (const row of rows) {
+  if (!row.고유아이디 && row.세부사업명 && row.이용자명 && row.성별) {
+    const members = await getSubProgramMembers({ 세부사업명: row.세부사업명 });
+    const matched = members.find(m =>
+  m.이용자명 === row.이용자명 && (!row.성별 || m.성별 === row.성별)
+);
+    if (matched) {
+      row.고유아이디 = matched.고유아이디;
+      row.유료무료 = row.유료무료 || matched.유료무료;
+    }
+  }
+}
   return await saveAttendanceRecords(rows);
 }
 

@@ -399,43 +399,44 @@ export async function updateMemberWithNonEmptyFields(member) {
 // ✅ 수정된 회원 등록 함수
 export async function registerMember(member) {
   try {
-    const isDuplicate = await checkDuplicateMember(member);
-    if (isDuplicate) {
-      return { success: false, reason: "duplicate" };
+    const duplicateCheck = await checkDuplicateMemberAdvanced(member);
+
+    if (duplicateCheck.isDuplicate) {
+      // block → 차단, warn → 관리자 확인 후 진행 가능
+      return { 
+        success: false, 
+        reason: duplicateCheck.action, 
+        details: duplicateCheck 
+      };
     }
 
     const birthdateStr = normalizeDate(member.birthdate);
     const normalizedPhone = normalizePhone(member.phone);
     const registrationDate = member.registrationDate || getCurrentKoreanDate();
-    
-    let ageGroup = "";
+
+    let ageGroup = "미상";
     if (birthdateStr && birthdateStr.length >= 4) {
       ageGroup = getAgeGroup(birthdateStr.substring(0, 4));
-    } else {
-      ageGroup = "미상";
     }
 
     const fullMember = {
       userId: generateUniqueId(),
       name: member.name || "",
       gender: member.gender || "",
-      birthdate: birthdateStr, // ✅ 문자열로 저장 (시간대 문제 해결)
-      ageGroup: ageGroup,
-      phone: normalizedPhone, // ✅ 정규화된 전화번호 저장
+      birthdate: birthdateStr,
+      ageGroup,
+      phone: normalizedPhone,
       address: member.address || "",
       district: member.district || "",
       incomeType: member.incomeType || "",
       disability: member.disability || "무",
       note: member.note || "",
-      registrationDate: registrationDate
+      registrationDate
     };
 
-    console.log("📝 등록 데이터:", {
-      name: fullMember.name,
-      birthdate: fullMember.birthdate,
-      ageGroup: fullMember.ageGroup,
-      phone: fullMember.phone
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.log("📝 등록 데이터:", fullMember);
+    }
 
     const docRef = await addDoc(memberCollection, fullMember);
     return { success: true, userId: fullMember.userId, docId: docRef.id };
@@ -473,13 +474,13 @@ export async function updateMember(id, updatedData) {
     throw error;
   }
 }
-
-// ✅ 수정된 고급 중복 체크 함수
+// ✅ 최종 보완된 고급 중복 체크 함수
 export async function checkDuplicateMemberAdvanced({ name, birthdate, phone }) {
   try {
     const normalizedBirthdate = normalizeDate(birthdate);
     const normalizedPhone = normalizePhone(phone);
-    
+
+    // 1️⃣ 완전 일치 확인
     const exactResult = await checkDuplicateMember({ name, birthdate, phone });
     if (exactResult) {
       return {
@@ -491,24 +492,39 @@ export async function checkDuplicateMemberAdvanced({ name, birthdate, phone }) {
       };
     }
 
-    const nameAndBirthQuery = query(
-      memberCollection,
-      where("name", "==", name)
-    );
-    
-    const snapshot = await getDocs(nameAndBirthQuery);
+    // 2️⃣ 이름 동일 회원 검색
+    const nameQuery = query(memberCollection, where("name", "==", name));
+    const snapshot = await getDocs(nameQuery);
     const similarMatches = [];
 
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data();
       const existingBirthdate = safeBirthdateExtract(data.birthdate);
       const existingPhone = normalizePhone(data.phone);
-      
+
+      // 이름+생년월일 동일, 연락처 다름
       if (existingBirthdate === normalizedBirthdate && existingPhone !== normalizedPhone) {
         similarMatches.push({
+          type: "birthdateMatch",
+          id: docSnap.id,
           name: data.name,
           birthdate: existingBirthdate,
-          phone: existingPhone
+          phone: existingPhone,
+          address: data.address || "",
+          district: data.district || ""
+        });
+      }
+
+      // 이름+연락처 동일, 생년월일 다름
+      if (existingPhone === normalizedPhone && existingBirthdate !== normalizedBirthdate) {
+        similarMatches.push({
+          type: "phoneMatch",
+          id: docSnap.id,
+          name: data.name,
+          birthdate: existingBirthdate,
+          phone: existingPhone,
+          address: data.address || "",
+          district: data.district || ""
         });
       }
     }
@@ -518,7 +534,7 @@ export async function checkDuplicateMemberAdvanced({ name, birthdate, phone }) {
         isDuplicate: true,
         confidence: 'medium',
         action: 'warn',
-        message: '동일한 이름과 생년월일을 가진 회원이 존재합니다.',
+        message: '유사 회원이 존재합니다. (이름+생년월일 또는 이름+연락처)',
         matches: similarMatches
       };
     }

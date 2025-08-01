@@ -11,54 +11,66 @@ import { useUserRole } from "../hooks/useUserRole";
 import useSnackbar from "./useSnackbar";
 import { normalizeDate, getCurrentKoreanDate } from "../utils/dateUtils"; // ✅ 통합된 normalizeDate 사용
 
-// ✅ 이용자명+성별 매칭으로 변경
-async function getUserId(이용자명, 성별, 세부사업명) {
+// 이름 비교할 때 대소문자 무시, 공백 제거하는 헬퍼함수
+const cleanName = (str) => (str || "").toLowerCase().replace(/\s+/g, "");
+
+/// 이용자번호 예: "정기수840223" → { name: "정기수", birthdate: "1984-04-23" }
+function parseUserNumber(userNumber) {
+  if (!userNumber) return { name: "", birthdate: "" };
+  // 공백도 포함한 이름 + 6자리 숫자 패턴으로 변경
+  const match = userNumber.match(/^([\p{L} \-']+)(\d{6})$/u);
+  if (!match) return { name: "", birthdate: "" };
+  const [_, name, ymd] = match;
+  const yearPrefix = Number(ymd.slice(0, 2)) < 30 ? "20" : "19";
+  const birthdate = `${yearPrefix}${ymd.slice(0, 2)}-${ymd.slice(2, 4)}-${ymd.slice(4, 6)}`;
+  return { name: name.trim(), birthdate };
+}
+
+// ✅ 동명이인 모두 반환 (고유아이디 배열)
+async function getUserIds(이용자명, 성별, 세부사업명) {
   const members = await getSubProgramMembers({ 세부사업명 });
-  const member = members.find(m => m.이용자명 === 이용자명 && m.성별 === 성별);
-  return member ? member.고유아이디 : "";
+  let matches = members.filter(m => m.이용자명 === 이용자명 && m.성별 === 성별);
+
+  if (matches.length === 0) {
+    // 성별 일치자가 없으면 이름만으로 fallback
+    matches = members.filter(m => m.이용자명 === 이용자명);
+  }
+
+  return matches.map(m => m.고유아이디);
 }
 
 async function mapFields(row, structure) {
-  const today = new Date();
   const todayStr = getCurrentKoreanDate();
-  const 고유아이디 = await getUserId(row["이용자명"], row["성별"], row["세부사업명"]);
-  
-  // ✅ 여러 구조에서 매핑 정보 찾기
+  const 고유아이디목록 = await getUserIds(row["이용자명"], row["성별"], row["세부사업명"]);
+
+  const subName = (row["세부사업명"] || "").trim().toLowerCase();
   let struct = {};
-  
-  if (structure[row["세부사업명"]]) {
-    struct = structure[row["세부사업명"]];
-  } else if (structure.flat && structure.flat[row["세부사업명"]]) {
-    struct = structure.flat[row["세부사업명"]];
-  } else if (structure.hierarchical) {
-    // 계층구조에서 세부사업명 찾기
-    for (const [team, units] of Object.entries(structure.hierarchical)) {
-      for (const [unit, subs] of Object.entries(units)) {
-        if (subs.includes(row["세부사업명"])) {
-          struct = { function: team, unit: unit, team: team };
-          break;
-        }
-      }
-      if (struct.function) break;
-    }
+
+  const normStructure = Object.fromEntries(
+    Object.entries(structure).map(([k, v]) => [k.trim().toLowerCase(), v])
+  );
+
+  if (normStructure[subName]) {
+    struct = normStructure[subName];
   }
-  
-  return {
+
+  // ✅ 여러 개 반환
+  return 고유아이디목록.map(고유아이디 => ({
     날짜: normalizeDate(row["날짜"]) || todayStr,
     세부사업명: row["세부사업명"] || "",
     이용자명: row["이용자명"] || "",
     성별: row["성별"] || "",
     "내용(특이사항)": row["내용(특이사항)"] || "",
-    출석여부: row["출석여부"]?.trim() === "결석" ? false : (row["출석여부"]?.trim() === "출석" || !row["출석여부"] ? true : false),
+    출석여부: row["출석여부"]?.trim() === "결석" ? false : true,
     고유아이디,
     function: struct.function || "",
     unit: struct.unit || ""
-  };
+  }));
 }
 
 // ✅ 중복 로직을 날짜+세부사업명+이용자명으로 변경
 function generateRowKey(row) {
-  return `${row["날짜"]}_${row["세부사업명"]}_${row["이용자명"]}`.trim();
+  return `${row["날짜"]}_${row["세부사업명"]}_${row["고유아이디"] || row["이용자명"]}_${row["연락처"] || ""}`.trim();
 }
 
 function deduplicateRows(rows) {
@@ -167,36 +179,28 @@ if (!hasMapping) {
           setErrors(prev => [...prev, { row, error }]);
           continue;
         }
+// 3) 매칭 로직 수정된 부분 (handleFile 내부)
+const { name: parsedName, birthdate: parsedBirthdate } = parseUserNumber(row["이용자번호"]);
+const members = await getSubProgramMembers({ 세부사업명: row["세부사업명"] });
+const subProgramMember = members.find(m =>
+  cleanName(m.이용자명) === cleanName(parsedName) &&
+  m.생년월일 && m.생년월일.startsWith(parsedBirthdate)
+);
 
-        const 이용자명 = row["이용자명"].trim();
-        const 성별 = row["성별"] || "";
-        const 세부사업명 = row["세부사업명"];
+const mappedRows = await mapFields({
+  ...row,
+  이용자명: row["이용자명"],
+  성별: row["성별"],
+}, structure);
 
-        // ✅ 이용자명+성별로 매칭
-        const members = await getSubProgramMembers({ 세부사업명 });
-        const subProgramMember = members.find(m =>
-          m.이용자명 === 이용자명 && m.성별 === 성별
-        );
-
-        if (subProgramMember) {
-          const mappedRow = await mapFields({
-            ...row,
-            고유아이디: subProgramMember.고유아이디
-          }, structure);
-          
-          console.log("📤 출석 업로드 데이터:", {
-            이용자명: mappedRow.이용자명,
-            원본날짜: row["날짜"],
-            정규화날짜: mappedRow.날짜,
-            날짜타입: typeof row["날짜"]
-          });
-          
-          validRows.push(mappedRow);
-          matched++;
-        } else {
-          unmatched.push(row);
-          failed++;
-        }
+// ✅ 여러 명 반환 시 모두 추가
+if (mappedRows.length > 0) {
+  validRows.push(...mappedRows);
+  matched += mappedRows.length;
+} else {
+  unmatched.push(row);
+  failed++;
+}
       }
 
       if (validRows.length > 0) {
@@ -230,10 +234,10 @@ if (unmatched.length > 0) setShowUnmatchedDialog(true);
       </Typography>
       
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3, textAlign: "center" }}>
-        <strong>필수 헤더:</strong> 날짜, 세부사업명, 이용자명, 성별, 내용(특이사항), 출석여부, 고유아이디<br/>
-        ※ 날짜는 YYYY-MM-DD 형식(자동 변환), 중복(날짜+세부사업명+이용자명) 자동 제외<br/>
-        ✅ 이름+성별로 자동 매핑, 출석여부 비어있으면 출석 처리(결석만 false)
-      </Typography>
+  <strong>필수 헤더:</strong> 날짜, 세부사업명, 이용자명, 성별, 이용자번호(이름+생년월일6자리), 내용(특이사항), 출석여부, 고유아이디<br />
+  ※ 날짜는 YYYY-MM-DD 형식(자동 변환), 중복(날짜+세부사업명+고유아이디) 자동 제외<br />
+  ✅ 이용자번호를 기반으로 매칭하여 고유아이디를 자동 할당하며, 출석여부가 비어있으면 출석, "결석"만 결석 처리합니다.
+</Typography>
 
       <Box sx={{ mb: 3, textAlign: "center" }}>
         <input

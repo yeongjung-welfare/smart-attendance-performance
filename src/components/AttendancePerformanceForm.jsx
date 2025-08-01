@@ -39,6 +39,7 @@ function AttendancePerformanceForm({
 
   const [alert, setAlert] = useState(null);
   const [availableMembers, setAvailableMembers] = useState([]);
+  const [userIdOptions, setUserIdOptions] = useState([]); // ✅ 동명이인 고유아이디 후보 저장
 
   // 세부사업명 목록 추출
   // ✅ 강사별 세부사업 필터링
@@ -232,22 +233,25 @@ useEffect(() => {
   };
 
   const handleUserNameChange = async (e) => {
-    const 이용자명 = e.target.value;
-    setFormData({ ...formData, 이용자명, 고유아이디: "" });
+  const 이용자명 = e.target.value;
+  setFormData({ ...formData, 이용자명, 고유아이디: "" });
 
-    if (이용자명 && formData.세부사업명) {
-      const members = await getSubProgramMembers({ 세부사업명: formData.세부사업명 });
-      const member = members.find(m => m.이용자명 === 이용자명);
-      if (member) {
-        setFormData(prev => ({
-          ...prev,
-          고유아이디: member.고유아이디,
-          성별: member.성별 || prev.성별,
-          유료무료: member.유료무료 || ""
-        }));
-      }
+  if (이용자명 && formData.세부사업명) {
+    const members = await getSubProgramMembers({ 세부사업명: formData.세부사업명 });
+    const matchedMembers = members.filter(m => m.이용자명 === 이용자명);
+
+    setUserIdOptions(matchedMembers); // ✅ 후보 저장
+
+    if (matchedMembers.length === 1) {
+      setFormData(prev => ({
+        ...prev,
+        고유아이디: matchedMembers[0].고유아이디,
+        성별: matchedMembers[0].성별 || prev.성별,
+        유료무료: matchedMembers[0].유료무료 || ""
+      }));
     }
-  };
+  }
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -463,13 +467,24 @@ useEffect(() => {
 
           {/* 고유아이디 필드 (읽기 전용) */}
           <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="고유아이디"
-              value={formData.고유아이디}
-              disabled
-            />
-          </Grid>
+  <FormControl fullWidth>
+    <InputLabel>고유아이디 선택</InputLabel>
+    <Select
+      value={formData.고유아이디}
+      onChange={(e) => setFormData(prev => ({ ...prev, 고유아이디: e.target.value }))}
+      displayEmpty
+    >
+      <MenuItem value="">
+        <em>고유아이디를 선택하세요</em>
+      </MenuItem>
+      {userIdOptions.map(member => (
+        <MenuItem key={member.고유아이디} value={member.고유아이디}>
+          {`${member.이용자명} (${member.성별 || '성별미상'}) - ${member.고유아이디.substring(0,8)}...`}
+        </MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+</Grid>
 
           {/* ✅ 수정 모드에서만 표시되는 필드들 */}
           {mode === "performance" && (

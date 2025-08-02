@@ -389,6 +389,23 @@
       ]
     },
     {
+  "collectionGroup": "Members",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "name", "order": "ASCENDING" },
+    { "fieldPath": "phone", "order": "ASCENDING" },
+    { "fieldPath": "birthdate", "order": "ASCENDING" }
+  ]
+},
+{
+  "collectionGroup": "AttendanceRecords",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "`고유아이디`", "order": "ASCENDING" },
+    { "fieldPath": "`날짜`", "order": "ASCENDING" }
+  ]
+},
+    {
       "collectionGroup": "Users",
       "queryScope": "COLLECTION",
       "fields": [

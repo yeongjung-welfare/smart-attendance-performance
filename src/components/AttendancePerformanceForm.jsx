@@ -204,6 +204,32 @@ useEffect(() => {
     }
   }, [formData.세부사업명, formData.이용자명, mode, initialData?.id]);
 
+  // ✅ 수정 모드일 때 고유아이디 후보 채우기
+useEffect(() => {
+  if (mode === "performance" && formData.세부사업명 && formData.이용자명) {
+    (async () => {
+      try {
+        const members = await getSubProgramMembers({ 세부사업명: formData.세부사업명 });
+        const matchedMembers = members.filter(m => m.이용자명 === formData.이용자명);
+
+        setUserIdOptions(matchedMembers);
+
+        // 후보가 1명뿐이면 자동 선택
+        if (matchedMembers.length === 1) {
+          setFormData(prev => ({
+            ...prev,
+            고유아이디: matchedMembers[0].고유아이디,
+            성별: matchedMembers[0].성별 || prev.성별,
+            유료무료: matchedMembers[0].유료무료 || ""
+          }));
+        }
+      } catch (error) {
+        console.error("고유아이디 후보 불러오기 실패:", error);
+      }
+    })();
+  }
+}, [mode, formData.세부사업명, formData.이용자명]);
+
   // 횟수 자동계산
   const calcSessions = async (세부사업명, 이용자명, 날짜) => {
     if (!세부사업명 || !날짜) return 1;
@@ -254,16 +280,23 @@ useEffect(() => {
 };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (!formData.이용자명 || !formData.날짜 || !formData.세부사업명) {
-      setAlert({ type: "warning", message: "이용자명, 날짜, 세부사업명은 필수입니다." });
-      return;
-    }
+  // ✅ 필수 입력값 확인
+  if (!formData.이용자명 || !formData.날짜 || !formData.세부사업명) {
+    setAlert({ type: "warning", message: "이용자명, 날짜, 세부사업명은 필수입니다." });
+    return;
+  }
 
-    try {
-      // ✅ 날짜 정규화 추가
-      const normalizedDate = normalizeDate(formData.날짜);
+  // ✅ 고유아이디 필수 확인
+  if (!formData.고유아이디) {
+    setAlert({ type: "warning", message: "고유아이디를 반드시 선택하세요." });
+    return;
+  }
+
+  try {
+    // ✅ 날짜 정규화 추가
+    const normalizedDate = normalizeDate(formData.날짜);
       
       // 횟수 자동계산
       let 횟수 = formData.횟수;
@@ -331,24 +364,35 @@ useEffect(() => {
 
   // ✅ initialData 변경 시 폼 데이터 업데이트 (수정 모드 지원)
   useEffect(() => {
-    if (initialData && Object.keys(initialData).length > 0) {
-      console.log("✅ initialData 업데이트:", initialData);
-      setFormData({
-        이용자명: initialData?.이용자명 || "",
-        날짜: initialData?.날짜 ? normalizeDate(initialData.날짜) : "", // ✅ 날짜 정규화 추가
-        세부사업명: initialData?.세부사업명 || "",
-        성별: initialData?.성별 || "",
-        "내용(특이사항)": initialData?.["내용(특이사항)"] || "",
-        출석여부: initialData?.출석여부 === true || initialData?.출석여부 === "true",
-        고유아이디: initialData?.고유아이디 || "",
-        유료무료: initialData?.유료무료 || "",
-        기능: initialData?.기능 || "",
-        팀명: initialData?.팀명 || "",
-        단위사업명: initialData?.단위사업명 || "",
-        횟수: initialData?.횟수 || 0
-      });
-    }
-  }, [initialData]);
+  if (initialData && Object.keys(initialData).length > 0) {
+    console.log("✅ initialData 업데이트:", initialData);
+    setFormData({
+      이용자명: initialData?.이용자명 || "",
+      날짜: initialData?.날짜 ? normalizeDate(initialData.날짜) : "",
+      세부사업명: initialData?.세부사업명 || "",
+      성별: initialData?.성별 || "",
+      "내용(특이사항)": initialData?.["내용(특이사항)"] || "",
+      출석여부: initialData?.출석여부 === true || initialData?.출석여부 === "true",
+      고유아이디: initialData?.고유아이디 || "",
+      유료무료: initialData?.유료무료 || "",
+      기능: initialData?.기능 || "",
+      팀명: initialData?.팀명 || "",
+      단위사업명: initialData?.단위사업명 || "",
+      횟수: initialData?.횟수 || 0
+    });
+
+    // ✅ userIdOptions도 초기화
+    (async () => {
+      try {
+        const members = await getSubProgramMembers({ 세부사업명: initialData.세부사업명 });
+        const matchedMembers = members.filter(m => m.이용자명 === initialData.이용자명);
+        setUserIdOptions(matchedMembers);
+      } catch (err) {
+        console.error("초기 userIdOptions 설정 실패:", err);
+      }
+    })();
+  }
+}, [initialData]);
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -470,19 +514,23 @@ useEffect(() => {
   <FormControl fullWidth>
     <InputLabel>고유아이디 선택</InputLabel>
     <Select
-      value={formData.고유아이디}
-      onChange={(e) => setFormData(prev => ({ ...prev, 고유아이디: e.target.value }))}
-      displayEmpty
-    >
-      <MenuItem value="">
-        <em>고유아이디를 선택하세요</em>
-      </MenuItem>
-      {userIdOptions.map(member => (
-        <MenuItem key={member.고유아이디} value={member.고유아이디}>
-          {`${member.이용자명} (${member.성별 || '성별미상'}) - ${member.고유아이디.substring(0,8)}...`}
-        </MenuItem>
-      ))}
-    </Select>
+  value={formData.고유아이디 || ""}
+  onChange={(e) => setFormData(prev => ({ ...prev, 고유아이디: e.target.value }))}
+  displayEmpty
+>
+  <MenuItem value="">
+    <em>고유아이디를 선택하세요</em>
+  </MenuItem>
+  {[...userIdOptions, 
+    ...(formData.고유아이디 && !userIdOptions.find(m => m.고유아이디 === formData.고유아이디)
+      ? [{ 고유아이디: formData.고유아이디, 이용자명: formData.이용자명, 성별: formData.성별 }]
+      : [])
+  ].map(member => (
+    <MenuItem key={member.고유아이디} value={member.고유아이디}>
+      {`${member.이용자명} (${member.성별 || '성별미상'}) - ${member.고유아이디.substring(0,8)}...`}
+    </MenuItem>
+  ))}
+</Select>
   </FormControl>
 </Grid>
 

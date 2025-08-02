@@ -2,6 +2,9 @@ import {
   collection,
   getDocs,
   getDoc,
+  orderBy,
+  limit,
+  startAfter,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -81,6 +84,9 @@ export async function saveAttendanceRecords(records) {
       const normalizedDate = normalizeDate(record.날짜 || record.date);
       const 출석여부 = isPresent(record.출석여부);
 
+      // ✅ 안전한 생년월일 정규화 (여기에 추가)
+      const 생년월일 = record.생년월일 ? normalizeDate(record.생년월일) : "";
+
       // ✅ 고유아이디 여러 개 조회
       const 고유아이디목록 = record.고유아이디
         ? [record.고유아이디]
@@ -130,6 +136,7 @@ export async function saveAttendanceRecords(records) {
           이용자명,
           성별,
           연락처,
+          생년월일, // ✅ 추가
           "내용(특이사항)": 내용,
           고유아이디,
           출석여부,
@@ -142,18 +149,57 @@ export async function saveAttendanceRecords(records) {
           createdAt: getCurrentKoreanDate()
         };
 
-        // 중복 체크
-        const q = query(
-          collectionRef,
-          where("날짜", "==", normalizedDate),
-          where("세부사업명", "==", 세부사업명),
-          where("고유아이디", "==", 고유아이디)
-        );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          results.push({ success: false, record, error: `이미 등록된 출석 (${고유아이디})` });
-          continue;
-        }
+        // ✅ 다중 중복 체크 로직 (1순위 → 3순위)
+let isDuplicate = false;
+
+// 1순위: 날짜 + 세부사업명 + 고유아이디
+let q = query(
+  collectionRef,
+  where("날짜", "==", normalizedDate),
+  where("세부사업명", "==", 세부사업명),
+  where("고유아이디", "==", 고유아이디)
+);
+let snapshot = await getDocs(q);
+if (!snapshot.empty) {
+  isDuplicate = true;
+}
+
+// 2순위: 날짜 + 세부사업명 + 이용자명 + 성별 + 생년월일 + 연락처
+if (!isDuplicate) {
+  q = query(
+    collectionRef,
+    where("날짜", "==", normalizedDate),
+    where("세부사업명", "==", 세부사업명),
+    where("이용자명", "==", 이용자명),
+    where("성별", "==", 성별),
+    ...(생년월일 ? [where("생년월일", "==", 생년월일)] : []),
+    ...(연락처 ? [where("연락처", "==", 연락처)] : [])
+  );
+  snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    isDuplicate = true;
+  }
+}
+
+// 3순위: 날짜 + 세부사업명 + 이용자명 + 성별
+if (!isDuplicate) {
+  q = query(
+    collectionRef,
+    where("날짜", "==", normalizedDate),
+    where("세부사업명", "==", 세부사업명),
+    where("이용자명", "==", 이용자명),
+    where("성별", "==", 성별)
+  );
+  snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    isDuplicate = true;
+  }
+}
+
+if (isDuplicate) {
+  results.push({ success: false, record, error: `이미 등록된 출석 (다중 기준 충족)` });
+  continue;
+}
 
         // 출석 저장
         await addDoc(collectionRef, docData);
@@ -206,6 +252,31 @@ export async function fetchAttendances(filters = {}) {
     ...doc.data(),
     출석여부: isPresent(doc.data().출석여부)
   }));
+}
+
+// ✅ 출석 기록 페이징 조회
+export async function fetchAttendanceRecords({ pageSize = 100, lastDoc = null }) {
+  let q = query(
+    collection(db, "AttendanceRecords"),
+    orderBy("날짜", "desc"),
+    limit(pageSize)
+  );
+
+  if (lastDoc) {
+    q = query(q, startAfter(lastDoc));
+  }
+
+  const snapshot = await getDocs(q);
+  const data = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    출석여부: isPresent(doc.data().출석여부)
+  }));
+
+  return {
+    data,
+    lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+  };
 }
 
 // 실적 전체 조회 (개별실적만 조회하도록 수정)
@@ -296,63 +367,64 @@ export async function savePerformance(data) {
   let isUserPerformance = !!data.이용자명;
 
   if (isUserPerformance) {
-    const normalizedDate = normalizeDate(data.날짜); // ✅ 날짜 정규화
+    const normalizedDate = normalizeDate(data.날짜);
 
+    // 고유아이디 조회
     const 고유아이디목록 = data.고유아이디
-  ? [data.고유아이디]
-  : await getUserIds(data.이용자명, data.성별, data.세부사업명);
+      ? [data.고유아이디]
+      : await getUserIds(data.이용자명, data.성별, data.세부사업명);
 
-if (고유아이디목록.length === 0) {
-  throw new Error("고유아이디 없음 (동명이인/미등록)");
-}
-
-for (const 고유아이디 of 고유아이디목록) {
-  const q = query(
-    collectionRef,
-    where("날짜", "==", normalizedDate),
-    where("세부사업명", "==", data.세부사업명),
-    where("고유아이디", "==", 고유아이디)
-  );
-  const snapshot = await getDocs(q);
-  if (!snapshot.empty) continue;
-
-  const docData = { ...data, 날짜: normalizedDate, 고유아이디, 실적유형: "개별" };
-  const docRef = await addDoc(collectionRef, docData);
-  results.push({ id: docRef.id, ...docData });
-}
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-      throw new Error("이미 등록된 실적입니다.");
+    if (고유아이디목록.length === 0) {
+      throw new Error("고유아이디 없음 (동명이인/미등록)");
     }
+
+    for (const 고유아이디 of 고유아이디목록) {
+      // 중복 체크
+      const q = query(
+        collectionRef,
+        where("날짜", "==", normalizedDate),
+        where("세부사업명", "==", data.세부사업명),
+        where("고유아이디", "==", 고유아이디)
+      );
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) continue; // 이미 등록된 경우 건너뜀
+
+      // 실적 데이터 준비
+      let docData = { ...data, 날짜: normalizedDate, 고유아이디, 실적유형: "개별" };
+
+      // 유료/무료 자동 연동
+      if (!docData.feeType && docData.세부사업명 && docData.이용자명) {
+        const members = await getSubProgramMembers({ 세부사업명: docData.세부사업명 });
+        const member = members.find(m => m.이용자명 === docData.이용자명);
+        if (member) docData.feeType = member.유료무료 || "";
+      }
+
+      // 기능/단위/팀 자동 매핑
+      if ((!docData.function || !docData.unit || !docData.team) && docData.세부사업명) {
+        const map = await getStructureBySubProgram(docData.세부사업명);
+        if (map) {
+          docData.function = docData.function || map.function;
+          docData.unit = docData.unit || map.unit;
+          docData.team = docData.team || map.team;
+        }
+      }
+
+      docData.출석여부 = isPresent(data.출석여부);
+      docData.createdAt = getCurrentKoreanDate();
+
+      // Firestore 저장
+      const docRef = await addDoc(collectionRef, docData);
+      return { id: docRef.id, ...docData }; // ✅ 단일 결과 반환
+    }
+
+    throw new Error("이미 등록된 실적입니다."); // 모든 아이디가 이미 등록된 경우
   }
 
+  // 이용자명이 없는 경우 (예외 처리)
   let docData = { ...data };
-  docData.날짜 = normalizeDate(docData.날짜); // ✅ 날짜 정규화
-
-  const ids = await getUserIds(docData.이용자명, docData.성별, docData.세부사업명);
-if (ids.length === 0) throw new Error("고유아이디 없음 (동명이인/미등록)");
-docData.고유아이디 = ids[0]; // 여러 개일 경우 첫 번째 사용
-
-  // 유료/무료 자동 연동
-  if (!docData.feeType && docData.세부사업명 && docData.이용자명) {
-    const members = await getSubProgramMembers({ 세부사업명: docData.세부사업명 });
-    const member = members.find(m => m.이용자명 === docData.이용자명);
-    if (member) docData.feeType = member.유료무료 || "";
-  }
-
-  // 기능/단위/팀 자동 매핑
-  if ((!docData.function || !docData.unit || !docData.team) && docData.세부사업명) {
-    const map = await getStructureBySubProgram(docData.세부사업명);
-    if (map) {
-      docData.function = docData.function || map.function;
-      docData.unit = docData.unit || map.unit;
-      docData.team = docData.team || map.team;
-    }
-  }
-
-  docData.출석여부 = isPresent(data.출석여부);
-  docData.실적유형 = "개별"; // ✅ 실적유형 명시
-  docData.createdAt = getCurrentKoreanDate(); // ✅ 문자열로 저장
+  docData.날짜 = normalizeDate(docData.날짜);
+  docData.실적유형 = "개별";
+  docData.createdAt = getCurrentKoreanDate();
 
   const docRef = await addDoc(collectionRef, docData);
   return { id: docRef.id, ...docData };
@@ -670,7 +742,10 @@ export async function uploadAttendanceData(rows) {
   if (!row.고유아이디 && row.세부사업명 && row.이용자명 && row.성별) {
     const members = await getSubProgramMembers({ 세부사업명: row.세부사업명 });
     const matched = members.find(m =>
-  m.이용자명 === row.이용자명 && (!row.성별 || m.성별 === row.성별)
+  m.이용자명 === row.이용자명 &&
+  (!row.성별 || m.성별 === row.성별) &&
+  (!row.연락처 || m.연락처 === row.연락처) &&
+  (!row.생년월일 || m.생년월일 === normalizeDate(row.생년월일))
 );
     if (matched) {
       row.고유아이디 = matched.고유아이디;

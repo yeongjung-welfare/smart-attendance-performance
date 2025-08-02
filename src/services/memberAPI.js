@@ -350,12 +350,12 @@ export async function checkDuplicateMember({ name, birthdate, phone }) {
   }
 }
 
-// 빈값이 아닌 필드만 업데이트
+// ✅ 빈값 제외 업데이트 (생년월일 변경 시 연령대 재계산 포함)
 export async function updateMemberWithNonEmptyFields(member) {
   try {
     const normalizedBirthdate = normalizeDate(member.birthdate);
     const normalizedPhone = normalizePhone(member.phone);
-    
+
     const q = query(
       memberCollection,
       where("name", "==", member.name),
@@ -363,32 +363,39 @@ export async function updateMemberWithNonEmptyFields(member) {
     );
 
     const snapshot = await getDocs(q);
-    
+
     for (const docSnap of snapshot.docs) {
       const existing = docSnap.data();
       const existingBirthdate = safeBirthdateExtract(existing.birthdate);
-      
+
       if (existingBirthdate === normalizedBirthdate) {
         const updatedData = { ...existing };
-        
+
         Object.keys(member).forEach((key) => {
           if (member[key] !== "" && member[key] !== undefined) {
-            if (key === 'birthdate' || key === 'registrationDate') {
-              // ✅ 날짜는 문자열로 저장 (시간대 문제 해결)
-              updatedData[key] = normalizeDate(member[key]);
-            } else if (key === 'phone') {
-              updatedData[key] = normalizePhone(member[key]);
+            if (key === "birthdate") {
+              updatedData.birthdate = normalizeDate(member.birthdate);
+              const birthdateStr = updatedData.birthdate;
+              updatedData.ageGroup =
+                birthdateStr && birthdateStr.length >= 4
+                  ? getAgeGroup(birthdateStr.substring(0, 4))
+                  : "미상"; // ✅ 연령대 재계산
+            } else if (key === "registrationDate") {
+              updatedData.registrationDate = normalizeDate(member[key]);
+            } else if (key === "phone") {
+              updatedData.phone = normalizePhone(member[key]);
             } else {
               updatedData[key] = member[key];
             }
           }
         });
-        
+
         await updateDoc(doc(db, "Members", docSnap.id), updatedData);
+        console.log("✅ 빈값 제외 업데이트 완료:", updatedData);
         return true;
       }
     }
-    
+
     return false;
   } catch (error) {
     console.error("빈값 제외 업데이트 오류:", error);
@@ -446,34 +453,42 @@ export async function registerMember(member) {
   }
 }
 
-// ✅ 수정된 회원 정보 수정 함수
+// ✅ 최종 보완된 회원 정보 수정 함수
 export async function updateMember(id, updatedData) {
   try {
     const processedData = { ...updatedData };
-    
+
+    // ✅ 생년월일 변경 시 정규화 및 연령대 재계산
     if (processedData.birthdate) {
       processedData.birthdate = normalizeDate(processedData.birthdate);
-      const birthdateStr = normalizeDate(processedData.birthdate);
-      if (birthdateStr) {
-        processedData.ageGroup = getAgeGroup(birthdateStr.substring(0, 4));
-      }
+      const birthdateStr = processedData.birthdate;
+      processedData.ageGroup =
+        birthdateStr && birthdateStr.length >= 4
+          ? getAgeGroup(birthdateStr.substring(0, 4))
+          : "미상"; // fallback 처리
     }
 
+    // ✅ 등록일 정규화
     if (processedData.registrationDate) {
       processedData.registrationDate = normalizeDate(processedData.registrationDate);
     }
-    
+
+    // ✅ 전화번호 정규화
     if (processedData.phone) {
       processedData.phone = normalizePhone(processedData.phone);
     }
 
     const docRef = doc(db, "Members", id);
     await updateDoc(docRef, processedData);
+
+    console.log("✅ 회원 수정 완료:", { id, ...processedData });
+    return { success: true, id, ...processedData };
   } catch (error) {
     console.error("회원 수정 오류:", error);
-    throw error;
+    return { success: false, message: `회원 수정 중 오류 발생: ${error.message}` };
   }
 }
+
 // ✅ 최종 보완된 고급 중복 체크 함수
 export async function checkDuplicateMemberAdvanced({ name, birthdate, phone }) {
   try {

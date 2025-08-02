@@ -36,6 +36,7 @@ function AttendancePerformanceManage() {
   const [editing, setEditing] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [data, setData] = useState([]);
+  const [pageData, setPageData] = useState([]);
   const [filters, setFilters] = useState({
     세부사업명: "",
     날짜: "",
@@ -200,6 +201,11 @@ useEffect(() => {
   conds.push(where("실적유형", "==", "개별"));
   
   // ✅ 강사 권한 시 담당 세부사업으로 제한
+  if (userRole === "teacher" && subProgramOptions.length === 0) {
+  setError("담당 세부사업이 설정되지 않았습니다. 관리자에게 문의하세요.");
+  setLoading(false);
+  return;
+}
   if (userRole === "teacher" && subProgramOptions.length > 0) {
     // 강사 담당 세부사업 중 하나로 필터링 (첫 번째 사업으로 기본 설정)
     const teacherSubProgram = filters.세부사업명 || subProgramOptions[0];
@@ -246,6 +252,13 @@ useEffect(() => {
       }
     };
   }, [mode, filters.세부사업명, filters.날짜, filters.function, filters.unit]);
+
+  // ✅ 모드 변경 시 공통 초기화
+useEffect(() => {
+  setData([]);
+  setError("");
+  setUploadResult(null);
+}, [mode]);
 
   const handleSearch = async () => {
     if (mode === "attendance") {
@@ -327,7 +340,11 @@ const result = await fetchPerformances(searchFilters);
     setLoading(true);
     setError("");
     try {
-      await saveAttendanceRecords(rows.map(row => ({
+      const uniqueRows = Array.from(
+  new Map(rows.map(row => [row.고유아이디, row])).values()
+);
+
+      await saveAttendanceRecords(uniqueRows.map(row => ({
         이용자명: row.이용자명,
         날짜: row.날짜,
         세부사업명: row.세부사업명,
@@ -335,7 +352,7 @@ const result = await fetchPerformances(searchFilters);
         출석여부: row.출석여부 === true || row.출석여부 === "true",
         고유아이디: row.고유아이디
       })));
-      showSnackbar(`선택된 ${rows.length}명 출석 저장 및 실적 자동 연동 완료`, "success");
+      showSnackbar(`선택된 ${runiqueRows.length}명 출석 저장 및 실적 자동 연동 완료`, "success");
       setMode("performance");
       await handleSearch();
     } catch (e) {
@@ -461,6 +478,11 @@ const result = await fetchPerformances(searchFilters);
       
       console.log("✅ 정제된 업데이트 데이터:", updateData);
 
+      if (!formData.id) {
+  setError("수정할 항목의 ID가 없습니다.");
+  setLoading(false);
+  return;
+}
       await updatePerformance(formData.id, updateData);
       showSnackbar("실적이 수정되었습니다.", "success");
       setEditing(null);
@@ -615,9 +637,11 @@ const result = await fetchPerformances(searchFilters);
             <Button
               variant={mode === "attendance" ? "contained" : "outlined"}
               onClick={() => {
-                setMode("attendance");
-                setTimeout(() => handleSearch(), 0);
-              }}
+  setMode("attendance");
+  setData([]);         // 🔥 이전 데이터 초기화
+  setError("");
+  setUploadResult(null);
+}}
               fullWidth
               size="large"
               sx={{ fontWeight: mode === "attendance" ? 700 : 400 }}
@@ -629,9 +653,12 @@ const result = await fetchPerformances(searchFilters);
             <Button
               variant={mode === "performance" ? "contained" : "outlined"}
               onClick={() => {
-                setMode("performance");
-                setTimeout(() => handleSearch(), 0);
-              }}
+  setMode("performance");
+  setData([]);         // 🔥 이전 데이터 초기화
+  setError("");
+  setUploadResult(null);
+  setTimeout(() => handleSearch(), 0);
+}}
               fullWidth
               size="large"
               sx={{ fontWeight: mode === "performance" ? 700 : 400 }}
@@ -855,13 +882,17 @@ const result = await fetchPerformances(searchFilters);
 >
   <DialogTitle>단건 출석 등록</DialogTitle>
   <DialogContent>
-    <AttendancePerformanceForm
-  mode="attendance"
-  onSubmit={handleSingleRegister}
-  onClose={() => setShowForm(false)}
-  structure={programStructureMap.hierarchical || {}}
-  flatStructure={programStructureMap.flat || {}}
-/>
+    {(!programStructureMap.flat || !programStructureMap.hierarchical) ? (
+  <Alert severity="warning">사업 구조를 불러오는 중입니다...</Alert>
+) : (
+  <AttendancePerformanceForm
+    mode="attendance"
+    onSubmit={handleSingleRegister}
+    onClose={() => setShowForm(false)}
+    structure={programStructureMap.hierarchical || {}}
+    flatStructure={programStructureMap.flat || {}}
+  />
+)}
     {/* ✅ 디버깅용 - 배포 시 제거 */}
     {process.env.NODE_ENV === 'development' && (
   <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}>

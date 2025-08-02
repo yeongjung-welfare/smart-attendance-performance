@@ -1,7 +1,7 @@
 // src/services/subProgramMemberAPI.js
 
 import {
-  collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, and
+  collection, addDoc, getDoc, getDocs, updateDoc, deleteDoc, doc, query, where, and
 } from "firebase/firestore";
 import { db } from "../firebase";
 import generateUniqueId from "../utils/generateUniqueId";
@@ -111,16 +111,16 @@ export async function getSubProgramMembers({ 팀명, 단위사업명, 세부사�
   }
 }
 
-// ✅ 완전 수정된 등록 함수 - 문자열로 저장하도록 변경
+// ✅ 세부사업 회원 등록
 export async function registerSubProgramMember(member) {
   try {
     if (!member.이용자명 || !member.이용자명.trim()) {
-      throw new Error("이용자명은 필수 입력입니다.");
+      throw new Error("⚠️ 이용자명은 필수 입력입니다.");
     }
 
+    // 🔹 기능/단위 매핑
     let 팀명 = member.팀명;
     let 단위사업명 = member.단위사업명;
-
     if ((!팀명 || !단위사업명) && member.세부사업명) {
       const map = await getStructureBySubProgram(member.세부사업명);
       if (map) {
@@ -129,53 +129,58 @@ export async function registerSubProgramMember(member) {
       }
     }
 
+    // 🔹 전체회원관리 확인
     const allMembers = await getAllMembers();
     const normalizedPhone = normalizePhone(member.연락처);
     const normalizedBirthdate = normalizeDate(member.생년월일);
-    
-    const existingMember = allMembers.find(
-      m => m.name === member.이용자명.trim() &&
+
+    const baseMember = allMembers.find(
+      m =>
+        m.name === member.이용자명.trim() &&
         normalizeDate(m.birthdate) === normalizedBirthdate &&
         normalizePhone(m.phone) === normalizedPhone
     );
 
-    if (existingMember) {
-      member.고유아이디 = existingMember.userId || existingMember.고유아이디 || generateUniqueId();
-    } else {
-      member.고유아이디 = generateUniqueId();
+    if (!baseMember) {
+      throw new Error("⚠️ 전체회원관리에 등록되지 않은 회원은 세부사업 등록이 불가합니다.");
     }
 
-    // ✅ 핵심 수정: 문자열로 저장하여 시간대 문제 완전 해결
-    const 생년월일Str = normalizeDate(member.생년월일);
-    let ageGroup = "";
-    if (생년월일Str && 생년월일Str.length >= 4) {
-      ageGroup = getAgeGroup(생년월일Str.substring(0, 4));
-    } else {
-      ageGroup = "미상";
+    const 고유아이디 = baseMember.userId || baseMember.고유아이디;
+
+    // 🔹 동일 세부사업 중복 검사
+    const q = query(
+      subProgramMemberCollection,
+      where("고유아이디", "==", 고유아이디),
+      where("세부사업명", "==", member.세부사업명)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      throw new Error("⚠️ 이미 해당 세부사업에 등록된 회원입니다.");
     }
-    
+
+    // 🔹 연령대 계산
+    const 생년월일Str = normalizedBirthdate;
+    const ageGroup =
+      생년월일Str && 생년월일Str.length >= 4
+        ? getAgeGroup(생년월일Str.substring(0, 4))
+        : "미상";
+
+    // 🔹 최종 등록 데이터
     const fullMember = {
       ...member,
       팀명,
       단위사업명,
-      생년월일: 생년월일Str, // ✅ 문자열로 저장 (Date 객체 제거)
-      연락처: normalizedPhone, // ✅ 전화번호 정규화
-      연령대: member.연령대 || ageGroup, // 기존 연령대 우선, 없으면 계산값
+      생년월일: 생년월일Str,
+      연락처: normalizedPhone,
+      연령대: member.연령대 || ageGroup,
       유료무료: member.유료무료 || "무료",
       이용상태: member.이용상태 || "이용",
-      createdAt: getCurrentKoreanDate() // ✅ 문자열로 저장
+      고유아이디,
+      createdAt: getCurrentKoreanDate()
     };
 
-    console.log("📝 세부사업 회원 등록 데이터:", {
-      이용자명: fullMember.이용자명,
-      원본생년월일: member.생년월일,
-      정규화생년월일: 생년월일Str,
-      연령대: fullMember.연령대,
-      원본연락처: member.연락처,
-      정규화연락처: normalizedPhone
-    });
-
     const docRef = await addDoc(subProgramMemberCollection, fullMember);
+    console.log("✅ 세부사업 회원 등록 완료:", docRef.id);
     return docRef.id;
   } catch (err) {
     console.error("회원 등록 오류:", err);
@@ -183,12 +188,38 @@ export async function registerSubProgramMember(member) {
   }
 }
 
-// ✅ 수정된 업데이트 함수
+// ✅ 세부사업 회원 수정 (createdAt 보존 + updatedAt 기록 + 연령대 재계산)
 export async function updateSubProgramMember(id, updatedData) {
   try {
+    const allMembers = await getAllMembers();
+    const normalizedPhone = normalizePhone(updatedData.연락처);
+    const normalizedBirthdate = normalizeDate(updatedData.생년월일);
+
+    const baseMember = allMembers.find(
+      m =>
+        m.name === updatedData.이용자명.trim() &&
+        normalizeDate(m.birthdate) === normalizedBirthdate &&
+        normalizePhone(m.phone) === normalizedPhone
+    );
+
+    if (!baseMember) {
+      return { success: false, message: "⚠️ 전체회원관리에 없는 회원은 수정할 수 없습니다." };
+    }
+
+    const 고유아이디 = baseMember.userId || baseMember.고유아이디;
+
+    const q = query(
+      subProgramMemberCollection,
+      where("고유아이디", "==", 고유아이디),
+      where("세부사업명", "==", updatedData.세부사업명)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty && snapshot.docs[0].id !== id) {
+      return { success: false, message: "⚠️ 동일 세부사업에 이미 등록된 다른 회원이 존재합니다." };
+    }
+
     let 팀명 = updatedData.팀명;
     let 단위사업명 = updatedData.단위사업명;
-
     if ((!팀명 || !단위사업명) && updatedData.세부사업명) {
       const map = await getStructureBySubProgram(updatedData.세부사업명);
       if (map) {
@@ -197,27 +228,38 @@ export async function updateSubProgramMember(id, updatedData) {
       }
     }
 
-    const processedData = { ...updatedData, 팀명, 단위사업명 };
-    
-    // ✅ 날짜 필드 문자열로 처리
-    if (processedData.생년월일) {
-      processedData.생년월일 = normalizeDate(processedData.생년월일);
-    }
-
-    if (processedData.createdAt) {
-      processedData.createdAt = normalizeDate(processedData.createdAt);
-    }
-
-    // ✅ 전화번호 정규화
-    if (processedData.연락처) {
-      processedData.연락처 = normalizePhone(processedData.연락처);
-    }
-
     const docRef = doc(db, "SubProgramUsers", id);
+    const oldDocSnap = await getDoc(docRef);
+    let oldCreatedAt = getCurrentKoreanDate();
+    if (oldDocSnap.exists()) {
+      const oldData = oldDocSnap.data();
+      oldCreatedAt = oldData.createdAt || getCurrentKoreanDate();
+    }
+
+    const ageGroup =
+      normalizedBirthdate && normalizedBirthdate.length >= 4
+        ? getAgeGroup(normalizedBirthdate.substring(0, 4))
+        : "미상";
+
+    const processedData = {
+      ...updatedData,
+      팀명,
+      단위사업명,
+      생년월일: normalizedBirthdate,
+      연락처: normalizedPhone,
+      연령대: ageGroup,
+      고유아이디,
+      createdAt: oldCreatedAt,
+      updatedAt: getCurrentKoreanDate()
+    };
+
     await updateDoc(docRef, processedData);
+
+    console.log("✅ 세부사업 회원 수정 완료:", { id, ...processedData });
+    return { success: true, id, ...processedData };
   } catch (err) {
     console.error("회원 수정 오류:", err);
-    throw err;
+    return { success: false, message: `회원 수정 중 오류 발생: ${err.message}` };
   }
 }
 

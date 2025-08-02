@@ -298,8 +298,13 @@ function AttendancePerformanceTable({
           </Box>
         </Box>
 
-        <TableContainer sx={{ maxHeight: "calc(100vh - 400px)" }}>
-          <Table stickyHeader>
+        <TableContainer
+  sx={{
+    maxHeight: "calc(100vh - 250px)", // ✅ 더 많은 데이터 표시
+    overflowY: "auto",                // ✅ 스크롤 최적화
+  }}
+>
+  <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox">
@@ -460,8 +465,13 @@ function AttendancePerformanceTable({
         </Box>
       </Box>
 
-      <TableContainer sx={{ maxHeight: "calc(100vh - 400px)" }}>
-        <Table stickyHeader>
+      <TableContainer
+  sx={{
+    maxHeight: "calc(100vh - 250px)", // ✅ 더 많은 데이터 표시
+    overflowY: "auto",                // ✅ 스크롤 최적화
+  }}
+>
+  <Table stickyHeader>
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox">

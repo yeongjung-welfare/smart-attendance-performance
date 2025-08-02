@@ -58,6 +58,7 @@ import { useNavigate } from "react-router-dom";
 import { Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import useSnackbar from "../components/useSnackbar";
 import { normalizeDate } from "../utils/dateUtils";
+import ExportButton from "../components/ExportButton";
 
 // ✅ 완전히 개선된 모달 컴포넌트 - 드롭다운 UI 개선 및 기능 완벽 보존
 function PerformanceEditModal({ open, onClose, onSave, initialData }) {
@@ -1219,6 +1220,15 @@ const handleEditSave = async (data) => {
                   >
                     통계 동기화
                   </Button>
+
+                  <ExportButton
+    data={bulkPerformances}    // 대량실적 데이터 배열
+    fileName="대량실적_목록"
+    label="엑셀 다운로드"
+    sheetName="대량실적"
+    addDateToFileName={true}
+    size="large"    // 버튼 크기 조절 (ExportButton이 size prop 지원 시)
+  />
                 </Stack>
               </CardContent>
             </Card>

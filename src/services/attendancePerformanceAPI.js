@@ -11,7 +11,8 @@ import {
   doc,
   query,
   where,
-  writeBatch
+  writeBatch,
+  getCountFromServer
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { getStructureBySubProgram } from "./teamSubProgramMapAPI";
@@ -25,6 +26,47 @@ export async function getProgramSessionsForMonth(세부사업명, yearMonth) {
   // 실제 운영 DB 구조에 맞게 구현 필요!
   // 임시: 항상 4회 반환
   return 4;
+}
+
+/**
+ * @param {Object} options
+ *   - filters: { 세부사업명, 기능, 단위사업명, 날짜 } 등
+ *   - pageSize: 한 페이지당 데이터 건수 (기본 50)
+ *   - startAfterDoc: 페이지 커서 역할 문서 스냅샷
+ */
+export async function fetchPerformancesPaging({ filters = {}, pageSize = 50, startAfterDoc = null }) {
+    let q = collection(db, "PerformanceSummary");
+    const conditions = [where("실적유형", "==", "개별")];
+    if (filters.function) conditions.push(where("기능", "==", filters.function));
+    if (filters.unit) conditions.push(where("단위사업명", "==", filters.unit));
+    if (filters.세부사업명) conditions.push(where("세부사업명", "==", filters.세부사업명));
+    if (filters.날짜) conditions.push(where("날짜", "==", filters.날짜));
+
+    // 👉 (1) 전체 count용 쿼리
+    const countQuery = query(q, ...conditions);
+
+    // 👉 (2) getCountFromServer로 전체 건수 얻기
+    const countSnap = await getCountFromServer(countQuery);
+    const total = countSnap.data().count;
+
+    // 👉 (3) 페이지 조회 쿼리 구성
+    let baseQuery = query(
+        q,
+        ...conditions,
+        orderBy("날짜", "desc"),
+        orderBy("__name__"),
+        limit(pageSize)
+    );
+    if (startAfterDoc) {
+        baseQuery = query(baseQuery, startAfter(startAfterDoc));
+    }
+    const snapshot = await getDocs(baseQuery);
+
+    return {
+        items: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+        lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+        total         // 👈 전체 건수 반환!
+    };
 }
 
 // 고유아이디 조회

@@ -1,6 +1,7 @@
 // src/pages/AttendancePerformanceManage.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { Box, Typography, Button, Grid, Alert, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
+import Pagination from "@mui/material/Pagination";
 import AttendancePerformanceTable from "../components/AttendancePerformanceTable";
 import AttendancePerformanceForm from "../components/AttendancePerformanceForm";
 import AttendancePerformanceUploadForm from "../components/AttendancePerformanceUploadForm";
@@ -14,6 +15,7 @@ import { getTeacherSubPrograms } from "../services/teacherSubProgramMapAPI";
 import {
   fetchAttendances,
   fetchPerformances,
+  fetchPerformancesPaging,
   saveAttendanceRecords,
   updatePerformance,
   deletePerformance,
@@ -36,6 +38,10 @@ function AttendancePerformanceManage() {
   const [editing, setEditing] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [data, setData] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50); // 필요시 조정
+  const [lastDocs, setLastDocs] = useState([]); // 각 페이지별 커서 쌓음(이전 페이지 가능하게)
+  const [totalPages, setTotalPages] = useState(1);
   const [pageData, setPageData] = useState([]);
   const [filters, setFilters] = useState({
     세부사업명: "",
@@ -195,55 +201,79 @@ useEffect(() => {
         setData(dataRows);
       });
     } else if (mode === "performance") {
-  let q = collection(db, "PerformanceSummary");
-  const conds = [];
-  
-  conds.push(where("실적유형", "==", "개별"));
-  
-  // ✅ 강사 권한 시 담당 세부사업으로 제한
-  if (userRole === "teacher" && subProgramOptions.length === 0) {
-  setError("담당 세부사업이 설정되지 않았습니다. 관리자에게 문의하세요.");
-  setLoading(false);
-  return;
-}
-  if (userRole === "teacher" && subProgramOptions.length > 0) {
-    // 강사 담당 세부사업 중 하나로 필터링 (첫 번째 사업으로 기본 설정)
-    const teacherSubProgram = filters.세부사업명 || subProgramOptions[0];
-    conds.push(where("세부사업명", "==", teacherSubProgram));
-    
-    // 강사는 본인 담당 세부사업만 조회하므로 다른 필터 제한
-    if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
-  } else {
-    // 관리자/매니저는 기존 로직 유지
-    if (filters.function) conds.push(where("function", "==", filters.function));
-    if (filters.unit) conds.push(where("unit", "==", filters.unit));
-    if (filters.세부사업명) conds.push(where("세부사업명", "==", filters.세부사업명));
-    if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
+  setLoading(true);
+  setError("");
+  // 기존 onSnapshot 구독 해제
+  if (unsubscribeRef.current) {
+    unsubscribeRef.current();
+    unsubscribeRef.current = null;
   }
-  
-  if (conds.length > 0) q = query(q, ...conds);
 
-      unsubscribeRef.current = onSnapshot(q, (snapshot) => {
-        const rows = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          출석여부: doc.data().출석여부 === true || doc.data().출석여부 === "true" || doc.data().출석여부 === 1
-        }));
+  // 페이징용 startAfterDoc 가져오기 (page가 1보다 클 때만)
+  const startAfterDoc = page > 1 ? lastDocs[page - 2] : null;
 
-        const enrichedRows = rows.map(row => ({
-          ...row,
-          teamName: row.team || getTeamName(row.세부사업명)
-        }));
+  // 필터에 강사 세부사업 적용 로직 그대로 재구성
+  const currentFilters = { ...filters };
+  if (userRole === "teacher" && subProgramOptions.length === 0) {
+    setError("담당 세부사업이 설정되지 않았습니다. 관리자에게 문의하세요.");
+    setLoading(false);
+    return;
+  }
+  if (userRole === "teacher" && subProgramOptions.length > 0) {
+    currentFilters.세부사업명 = filters.세부사업명 || subProgramOptions[0];
+    // 강사는 다른 필터 제한 가능
+    if (!filters.날짜) delete currentFilters.날짜;
+  }
 
-        console.log("📊 실적 데이터:", enrichedRows);
-        enrichedRows.sort((a, b) => {
-          const aKey = `${a.세부사업명 || ""}_${a.이용자명 || ""}`;
-          const bKey = `${b.세부사업명 || ""}_${b.이용자명 || ""}`;
-          return aKey.localeCompare(bKey, "ko");
-        });
-        setData(enrichedRows);
-      });
+  fetchPerformancesPaging({
+    filters: currentFilters,
+    pageSize,
+    startAfterDoc
+  })
+    .then(result => {
+      const items = result.items || [];
+      // 페이징 디버깅 로그
+  console.log(`@@@@ 페이지: ${page}, data.length: ${items.length}, startAfterDoc:`, startAfterDoc);
+  console.log('@@@@ result.lastDoc:', result.lastDoc);
+  console.log('@@@@ lastDocs:', lastDocs);
+
+      const enrichedRows = items.map(row => ({
+        ...row,
+        teamName: row.team || getTeamName(row.세부사업명)
+      }));
+
+      enrichedRows.sort((a, b) => {
+      const aKey = `${a.세부사업명 || ""}_${a.이용자명 || ""}`;
+      const bKey = `${b.세부사업명 || ""}_${b.이용자명 || ""}`;
+      return aKey.localeCompare(bKey, "ko");
+    });
+
+    setData(enrichedRows);
+
+    // 2) 총 데이터 개수를 받아 페이지 수 계산 후 상태 저장
+    // fetchPerformancesPaging이 {total} 필드를 반환해야 함
+    if (result.total) {
+      setTotalPages(Math.ceil(result.total / pageSize));
+    } else {
+      setTotalPages(1);
     }
+
+    // 3) 페이지 커서 저장
+    const newLastDocs = [...lastDocs];
+if (result.items.length > 0 && result.lastDoc) {
+  newLastDocs[page - 1] = result.lastDoc;
+}
+setLastDocs(newLastDocs);
+
+    setLoading(false);
+  })
+  .catch(err => {
+    setError("실적 데이터(페이지) 로드 실패: " + err.message);
+    setLoading(false);
+    setData([]);
+    setTotalPages(1); // 실패 시 기본값 세팅
+  });
+}
 
     return () => {
       if (unsubscribeRef.current) {
@@ -251,7 +281,7 @@ useEffect(() => {
         unsubscribeRef.current = null;
       }
     };
-  }, [mode, filters.세부사업명, filters.날짜, filters.function, filters.unit]);
+  }, [mode, filters.세부사업명, filters.날짜, filters.function, filters.unit, page]);
 
   // ✅ 모드 변경 시 공통 초기화
 useEffect(() => {
@@ -261,48 +291,62 @@ useEffect(() => {
 }, [mode]);
 
   const handleSearch = async () => {
-    if (mode === "attendance") {
-      return;
-    } else {
-      setLoading(true);
-      setError("");
-      try {
-        // ✅ 강사 권한 시 담당 세부사업으로 필터링
-let searchFilters = {
-  function: filters.function,
-  unit: filters.unit,
-  세부사업명: filters.세부사업명,
-  날짜: filters.날짜,
-  performanceType: "개별"
-};
+  if (mode === "attendance") {
+    return;
+  } else {
+    setLoading(true);
+    setError("");
+    try {
+      // ✅ 강사 권한 시 담당 세부사업으로 필터링
+      let searchFilters = {
+        function: filters.function,
+        unit: filters.unit,
+        세부사업명: filters.세부사업명,
+        날짜: filters.날짜,
+        performanceType: "개별"
+      };
 
-if (userRole === "teacher" && subProgramOptions.length > 0) {
-  // 강사는 담당 세부사업만 조회
-  searchFilters = {
-    세부사업명: filters.세부사업명 || subProgramOptions[0],
-    날짜: filters.날짜,
-    performanceType: "개별"
-  };
-}
-
-const result = await fetchPerformances(searchFilters);
-
-        console.log("실적 데이터:", result);
-        if (result.length === 0) {
-          setError("해당 조건에 맞는 실적 데이터가 없습니다.");
-        } else {
-          const enrichedResult = result.map(row => ({
-            ...row,
-            teamName: row.team || getTeamName(row.세부사업명)
-          }));
-          setData(enrichedResult);
-        }
-      } catch (e) {
-        setError("실적 데이터 불러오기 실패: " + e.message);
+      if (userRole === "teacher" && subProgramOptions.length > 0) {
+        // 강사는 담당 세부사업만 조회
+        searchFilters = {
+          세부사업명: filters.세부사업명 || subProgramOptions[0],
+          날짜: filters.날짜,
+          performanceType: "개별"
+        };
       }
-      setLoading(false);
+
+      // 페이징용 startAfterDoc (page가 1보다 클 때만)
+      const startAfterDoc = (page > 1 && lastDocs[page - 2]) ? lastDocs[page - 2] : null;
+
+      const result = await fetchPerformancesPaging({
+        filters: searchFilters,
+        pageSize,
+        startAfterDoc
+      });
+
+      const items = result.items || [];
+      console.log("실적 데이터:", items);
+
+      if (items.length === 0) {
+        setError("해당 조건에 맞는 실적 데이터가 없습니다.");
+      } else {
+        const enrichedResult = items.map(row => ({
+          ...row,
+          teamName: row.team || getTeamName(row.세부사업명)
+        }));
+        setData(enrichedResult);
+
+        // 페이지 정보에 따른 커서 저장
+        const newLastDocs = [...lastDocs];
+        if (result.lastDoc) newLastDocs[page - 1] = result.lastDoc;
+        setLastDocs(newLastDocs);
+      }
+    } catch (e) {
+      setError("실적 데이터 불러오기 실패: " + e.message);
     }
-  };
+    setLoading(false);
+  }
+};
 
   // ✅ 핵심 기능 복원: 개별 출석 체크 처리
   const handleCheck = async (updatedRow) => {
@@ -529,24 +573,32 @@ const result = await fetchPerformances(searchFilters);
   };
 
   const handleFilterChange = (key, value) => {
-    setFilters((prev) => {
-      if (mode === "attendance") {
-        return {
-          ...prev,
-          [key]: value,
-          ...(key === "세부사업명" ? { 날짜: "" } : {})
-        };
+  setFilters((prev) => {
+    let newFilters;
+    if (mode === "attendance") {
+      newFilters = {
+        ...prev,
+        [key]: value,
+        ...(key === "세부사업명" ? { 날짜: "" } : {})
+      };
+    } else {
+      if (key === "function") {
+        newFilters = { ...prev, function: value, unit: "", 세부사업명: "" };
+      } else if (key === "unit") {
+        newFilters = { ...prev, unit: value, 세부사업명: "" };
       } else {
-        if (key === "function") {
-          return { ...prev, function: value, unit: "", 세부사업명: "" };
-        }
-        if (key === "unit") {
-          return { ...prev, unit: value, 세부사업명: "" };
-        }
-        return { ...prev, [key]: value };
+        newFilters = { ...prev, [key]: value };
       }
-    });
-  };
+    }
+    return newFilters;
+  });
+
+  setPage(1);
+  setLastDocs([]);
+  
+  // 직후 검색 호출 (debounce 적용 시 제외)
+  handleSearch();
+};
 
   if (roleLoading) {
     return (
@@ -591,13 +643,13 @@ const result = await fetchPerformances(searchFilters);
       </Typography>
 
       {loading && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <CircularProgress size={20} />
-            처리 중입니다...
-          </Box>
-        </Alert>
-      )}
+  <Alert severity="info" sx={{ mb: 2 }}>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      <CircularProgress size={20} />
+      데이터를 불러오는 중입니다. 잠시만 기다려 주세요...
+    </Box>
+  </Alert>
+)}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
@@ -631,82 +683,86 @@ const result = await fetchPerformances(searchFilters);
 
       {mode === "performance" && <PerformanceStats data={data} />}
 
-      <Box sx={{ mb: 3 }}>
-        <Grid container spacing={1}>
-          <Grid item xs={12} sm={6}>
-            <Button
-              variant={mode === "attendance" ? "contained" : "outlined"}
-              onClick={() => {
-  setMode("attendance");
-  setData([]);         // 🔥 이전 데이터 초기화
-  setError("");
-  setUploadResult(null);
-}}
-              fullWidth
-              size="large"
-              sx={{ fontWeight: mode === "attendance" ? 700 : 400 }}
-            >
-              출석관리
-            </Button>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Button
-              variant={mode === "performance" ? "contained" : "outlined"}
-              onClick={() => {
-  setMode("performance");
-  setData([]);         // 🔥 이전 데이터 초기화
-  setError("");
-  setUploadResult(null);
-  setTimeout(() => handleSearch(), 0);
-}}
-              fullWidth
-              size="large"
-              sx={{ fontWeight: mode === "performance" ? 700 : 400 }}
-            >
-              실적관리
-            </Button>
-          </Grid>
-        </Grid>
-      </Box>
+<Box sx={{ mb: 3 }}>
+  <Grid container columns={12} spacing={2}>
+    <Grid size={{ xs: 12, md: 6 }}>
+      <Button
+        variant={mode === "attendance" ? "contained" : "outlined"}
+        onClick={() => {
+          setMode("attendance");
+          setData([]);
+          setError("");
+          setUploadResult(null);
+        }}
+        fullWidth
+        size="large"
+        sx={{ fontWeight: mode === "attendance" ? 700 : 400 }}
+      >
+        출석관리
+      </Button>
+    </Grid>
+    <Grid size={{ xs: 12, md: 6 }}>
+      <Button
+        variant={mode === "performance" ? "contained" : "outlined"}
+        onClick={() => {
+          setMode("performance");
+          setData([]);
+          setError("");
+          setUploadResult(null);
+          setTimeout(() => handleSearch(), 0);
+        }}
+        fullWidth
+        size="large"
+        sx={{ fontWeight: mode === "performance" ? 700 : 400 }}
+      >
+        실적관리
+      </Button>
+    </Grid>
+  </Grid>
+</Box>
 
-      {mode === "attendance" && (
-        <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              세부사업명
-            </Typography>
-            <select
-              value={filters.세부사업명}
-              onChange={e => handleFilterChange("세부사업명", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-base"
-            >
-              <option value="">세부사업명 선택</option>
-              {subProgramOptions.map((sp) => (
-                <option key={sp} value={sp}>{sp}</option>
-              ))}
-            </select>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
-              날짜
-            </Typography>
-            <input
-              type="date"
-              value={filters.날짜}
-              onChange={e => handleFilterChange("날짜", e.target.value)}
-              className="w-full border rounded px-3 py-2 text-base"
-              disabled={!filters.세부사업명}
-            />
-          </Grid>
-        </Grid>
+{mode === "attendance" && (
+  <Grid container columns={12} spacing={2} alignItems="center" sx={{ mb: 2 }}>
+    <Grid size={6}>
+      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+        세부사업명
+      </Typography>
+      <select
+        value={filters.세부사업명}
+        onChange={e => handleFilterChange("세부사업명", e.target.value)}
+        className="w-full border rounded px-3 py-2 text-base"
+      >
+        <option value="">세부사업명 선택</option>
+        {subProgramOptions.map(sp => (
+          <option key={sp} value={sp}>{sp}</option>
+        ))}
+      </select>
+      {!filters.세부사업명 && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+          세부사업명을 먼저 선택해주세요.
+        </Typography>
       )}
+    </Grid>
+    <Grid size={6}>
+      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+        날짜
+      </Typography>
+      <input
+        type="date"
+        value={filters.날짜}
+        onChange={e => handleFilterChange("날짜", e.target.value)}
+        className="w-full border rounded px-3 py-2 text-base"
+        disabled={!filters.세부사업명}
+      />
+    </Grid>
+  </Grid>
+)}
 
-      {mode === "performance" && (
-  <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
-    {/* ✅ 강사는 기능/단위사업명 필터 숨기기 */}
+{mode === "performance" && (
+  <Grid container columns={12} spacing={2} alignItems="center" sx={{ mb: 2 }}>
     {userRole !== "teacher" && (
       <>
-        <Grid item xs={12} sm={3}>
+        <Grid size={3}>
           <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
             기능
           </Typography>
@@ -716,12 +772,17 @@ const result = await fetchPerformances(searchFilters);
             className="w-full border rounded px-3 py-2 text-base"
           >
             <option value="">전체</option>
-            {functionOptions.map((f) => (
+            {functionOptions.map(f => (
               <option key={f} value={f}>{f}</option>
             ))}
           </select>
+          {!filters.function && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+              기능을 먼저 선택해주세요.
+            </Typography>
+          )}
         </Grid>
-        <Grid item xs={12} sm={3}>
+        <Grid size={3}>
           <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
             단위사업명
           </Typography>
@@ -732,14 +793,14 @@ const result = await fetchPerformances(searchFilters);
             disabled={!filters.function}
           >
             <option value="">전체</option>
-            {filteredUnitOptions.map((u) => (
+            {filteredUnitOptions.map(u => (
               <option key={u} value={u}>{u}</option>
             ))}
           </select>
         </Grid>
       </>
     )}
-    <Grid item xs={12} sm={userRole === "teacher" ? 6 : 2}>
+    <Grid size={2}>
       <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
         세부사업명
       </Typography>
@@ -749,20 +810,13 @@ const result = await fetchPerformances(searchFilters);
         className="w-full border rounded px-3 py-2 text-base"
         disabled={userRole !== "teacher" && !filters.unit}
       >
-        <option value="">
-          {userRole === "teacher" ? "담당 세부사업 선택" : "전체"}
-        </option>
-        {userRole === "teacher" 
-          ? subProgramOptions.map((sp, idx) => (
-              <option key={sp + idx} value={sp}>{sp}</option>
-            ))
-          : filteredSubProgramOptions.map((sp, idx) => (
-              <option key={sp + idx} value={sp}>{sp}</option>
-            ))
-        }
+        <option value="">{userRole === "teacher" ? "담당 세부사업 선택" : "전체"}</option>
+        {(userRole === "teacher" ? subProgramOptions : filteredSubProgramOptions).map((sp, idx) => (
+          <option key={sp + idx} value={sp}>{sp}</option>
+        ))}
       </select>
     </Grid>
-    <Grid item xs={12} sm={userRole === "teacher" ? 6 : 4}>
+    <Grid size={4}>
       <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
         날짜
       </Typography>
@@ -776,49 +830,82 @@ const result = await fetchPerformances(searchFilters);
   </Grid>
 )}
 
-      <Box sx={{ mb: 3 }}>
+<Box sx={{ mb: 3 }}>
+  <Button
+    variant="contained"
+    onClick={handleSearch}
+    size="large"
+    sx={{ minWidth: 100, fontWeight: 600 }}
+  >
+    조회
+  </Button>
+</Box>
+
+{mode === "attendance" && userRole !== "teacher" && (
+  <Box sx={{ mb: 3 }}>
+    <Grid container columns={12} spacing={2}>
+      <Grid size={6}>
         <Button
           variant="contained"
-          onClick={handleSearch}
+          onClick={() => setShowForm(true)}
+          fullWidth
           size="large"
-          sx={{ minWidth: 100, fontWeight: 600 }}
         >
-          조회
+          + 단건 등록
         </Button>
-      </Box>
+      </Grid>
+      <Grid size={6}>
+        <Button
+          variant="outlined"
+          onClick={() => {
+            if (userRole === "teacher") {
+              showSnackbar("권한이 없습니다.", "error");
+              return;
+            }
+            setShowUpload(true);
+          }}
+          fullWidth
+          size="large"
+        >
+          📥 대량 업로드
+        </Button>
+      </Grid>
+    </Grid>
+  </Box>
+)}
 
-      {mode === "attendance" && userRole !== "teacher" && (
-        <Box sx={{ mb: 3 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <Button
-                variant="contained"
-                onClick={() => setShowForm(true)}
-                fullWidth
-                size="large"
-              >
-                + 단건 등록
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  if (userRole === "teacher") {
-                    showSnackbar("권한이 없습니다.", "error");
-                    return;
-                  }
-                  setShowUpload(true);
-                }}
-                fullWidth
-                size="large"
-              >
-                📥 대량 업로드
-              </Button>
-            </Grid>
-          </Grid>
-        </Box>
-      )}
+{mode === "performance" && (
+  <Box sx={{ display: "flex", alignItems: "center", gap: 2, justifyContent: "center", mb: 2 }}>
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => page > 1 && setPage(page - 1)}
+      disabled={page <= 1 || loading}
+    >
+      이전
+    </Button>
+
+    <Pagination
+      count={totalPages || 1}  // totalPages가 없으면 1페이지로 fallback
+      page={page}
+      onChange={(e, value) => setPage(value)}
+      color="primary"
+      siblingCount={1}
+      boundaryCount={1}
+      disabled={loading}
+      shape="rounded"
+    />
+
+    <Button
+      variant="outlined"
+      size="small"
+      onClick={() => page < (totalPages || 1) && setPage(page + 1)}
+      disabled={loading || page >= (totalPages || 1)}
+    >
+      다음
+    </Button>
+  </Box>
+)}
 
       {/* ✅ 핵심 기능: 체크박스 출석 체크 기능 완전 복원 */}
       <AttendancePerformanceTable
@@ -867,6 +954,7 @@ const result = await fetchPerformances(searchFilters);
               setShowEditModal(false);
               setEditing(null);
             }}
+            autoFocus   // 👈 추가!
           >
             취소
           </Button>

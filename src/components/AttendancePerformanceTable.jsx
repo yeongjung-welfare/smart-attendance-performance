@@ -159,7 +159,7 @@ function AttendancePerformanceTable({
     if (!window.confirm(`선택한 ${selectedIds.length}건을 정말 삭제하시겠습니까?`)) return;
     
     try {
-      await onBulkDelete(selectedIds);
+      if (onBulkDelete) await onBulkDelete(selectedIds);
       setSelectedIds([]);
       setDeleteResult({ deleted: selectedIds, failed: [] });
     } catch (error) {

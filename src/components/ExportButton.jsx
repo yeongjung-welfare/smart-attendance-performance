@@ -16,6 +16,7 @@ import { saveAs } from "file-saver"; // ✅ Blob 다운로드를 위해 추가
  */
 function ExportButton({
   data,
+  onExport,
   fileName = "이용자목록.xlsx",
   label = "엑셀 다운로드",
   headers,
@@ -60,7 +61,11 @@ function ExportButton({
     return `${base}_${y}${m}${d}${ext}`;
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
+  if (onExport) {
+    await onExport();
+    return;
+  }
   if (!Array.isArray(data) || data.length === 0) {
     alert("다운로드할 데이터가 없습니다.");
     return;
@@ -130,7 +135,7 @@ function ExportButton({
       startIcon={<DownloadIcon />}
       onClick={handleExport}
       sx={{ mb: 2, minWidth: 140 }}
-      disabled={!Array.isArray(data) || data.length === 0}
+      disabled={onExport ? false : !Array.isArray(data) || data.length === 0}
     >
       {label}
     </Button>

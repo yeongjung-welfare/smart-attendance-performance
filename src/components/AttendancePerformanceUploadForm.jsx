@@ -347,7 +347,7 @@ if (unmatched.length > 0) setShowUnmatchedDialog(true);
         size="large"
         sx={{ minWidth: 120 }}  // ← 이 부분 추가 필요
       >
-        {result?.added > 0 ? "✅ 완료" : "닫기"}  // ← 이모지 추가 및 완전한 형태
+        {result?.added > 0 ? "✅ 완료" : "닫기"}  // ← 확인후 닫기
       </Button>
   </Box>
 )}

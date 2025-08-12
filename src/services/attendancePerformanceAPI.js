@@ -41,6 +41,7 @@ export async function fetchPerformancesPaging({ filters = {}, pageSize = 50, sta
     if (filters.unit) conditions.push(where("단위사업명", "==", filters.unit));
     if (filters.세부사업명) conditions.push(where("세부사업명", "==", filters.세부사업명));
     if (filters.날짜) conditions.push(where("날짜", "==", filters.날짜));
+    if (filters.이용자명) conditions.push(where("이용자명", "==", filters.이용자명));
 
     // 👉 (1) 전체 count용 쿼리
     const countQuery = query(q, ...conditions);
@@ -392,6 +393,7 @@ export async function fetchAllPerformances(filters = {}, includeType = "all") {
   if (filters.팀명) conditions.push(where("팀명", "==", filters.팀명));
   if (filters.세부사업명) conditions.push(where("세부사업명", "==", filters.세부사업명));
   if (filters.날짜) conditions.push(where("날짜", "==", normalizeDate(filters.날짜))); // ✅ 날짜 정규화
+  if (filters.이용자명) conditions.push(where("이용자명", "==", filters.이용자명));
 
   if (conditions.length > 0) q = query(q, ...conditions);
 
@@ -819,4 +821,52 @@ export async function savePendingMembers(members) {
   });
   await batch.commit();
   return members.length;
+}
+
+// [추가] 필터 조건으로 Firestore를 커서 기반으로 끝까지 순회하여 전량 수집
+export async function fetchAllPerformancesPaged(args) {
+  const filters = args && args.filters ? args.filters : {};
+  const batchSize = args && args.batchSize ? args.batchSize : 500;
+
+  const baseRef = collection(db, "PerformanceSummary");
+  const conds = [];
+
+  if (filters.function) conds.push(where("기능", "==", filters.function));
+  if (filters.unit) conds.push(where("단위사업명", "==", filters.unit));
+  if (filters.팀명) conds.push(where("팀명", "==", filters.팀명));
+  if (filters.세부사업명) conds.push(where("세부사업명", "==", filters.세부사업명));
+  if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
+  if (filters.이용자명) conds.push(where("이용자명", "==", filters.이용자명));
+
+  let q = query(
+    baseRef,
+    ...conds,
+    orderBy("날짜", "desc"),
+    orderBy("__name__"),
+    limit(batchSize)
+  );
+
+  const all = [];
+  let lastDoc = null;
+
+  while (true) {
+    const snap = await getDocs(q);
+    if (snap.empty) break;
+
+    for (const d of snap.docs) {
+      all.push({ id: d.id, ...d.data() });
+    }
+
+    lastDoc = snap.docs[snap.docs.length - 1];
+    q = query(
+      baseRef,
+      ...conds,
+      orderBy("날짜", "desc"),
+      orderBy("__name__"),
+      startAfter(lastDoc),
+      limit(batchSize)
+    );
+  }
+
+  return all;
 }

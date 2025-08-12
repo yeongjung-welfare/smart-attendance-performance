@@ -16,6 +16,7 @@ import {
   fetchAttendances,
   fetchPerformances,
   fetchPerformancesPaging,
+  fetchAllPerformancesPaged,
   saveAttendanceRecords,
   updatePerformance,
   deletePerformance,
@@ -29,6 +30,7 @@ import { generateUniqueId } from "../utils/utils";
 import { isPresent } from "../utils/attendanceUtils";
 import { getStructureBySubProgram, getAllTeamSubProgramMaps } from "../services/teamSubProgramMapAPI";
 import { teamSubProgramMap } from "../data/teamSubProgramMap";
+import { exportToExcel } from "../utils/exportToExcel";
 
 function AttendancePerformanceManage() {
   const [mode, setMode] = useState("attendance");
@@ -348,6 +350,33 @@ useEffect(() => {
   }
 };
 
+// 추가: 현재 필터 조건으로 전량을 커서 순회해 수집하고 엑셀 저장
+const handleExportAll = async () => {
+  try {
+    setLoading(true);
+    const allData = await fetchAllPerformancesPaged({
+      filters,
+      batchSize: 500
+    });
+
+    if (!allData || allData.length === 0) {
+      alert("내보낼 데이터가 없습니다.");
+      return;
+    }
+
+    exportToExcel({
+      data: allData,
+      fileName: "실적_전체",
+      sheetName: "전체"
+    });
+  } catch (err) {
+    console.error(err);
+    alert("전체 엑셀 다운로드 중 오류가 발생했습니다.");
+  } finally {
+    setLoading(false);
+  }
+};
+
   // ✅ 핵심 기능 복원: 개별 출석 체크 처리
   const handleCheck = async (updatedRow) => {
     setLoading(true);
@@ -396,7 +425,7 @@ useEffect(() => {
         출석여부: row.출석여부 === true || row.출석여부 === "true",
         고유아이디: row.고유아이디
       })));
-      showSnackbar(`선택된 ${runiqueRows.length}명 출석 저장 및 실적 자동 연동 완료`, "success");
+      showSnackbar(`선택된 ${uniqueRows.length}명 출석 저장 및 실적 자동 연동 완료`, "success");
       setMode("performance");
       await handleSearch();
     } catch (e) {
@@ -666,7 +695,7 @@ useEffect(() => {
         <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
           <ExportButton
             data={data}
-            fileName="실적_통계.xlsx"
+            fileName="실적_조회.xlsx"
             label="엑셀 다운로드"
             headers={[
               ["날짜", "날짜"],
@@ -677,6 +706,7 @@ useEffect(() => {
               ["출석여부", "출석여부"],
               ["고유아이디", "고유아이디"]
             ]}
+            onExport={handleExportAll}
           />
         </Box>
       )}

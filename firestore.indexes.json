@@ -405,6 +405,14 @@
     { "fieldPath": "`날짜`", "order": "ASCENDING" }
   ]
 },
+{
+  "collectionGroup": "PerformanceSummary",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "`이용자명`", "order": "ASCENDING" },
+    { "fieldPath": "`날짜`", "order": "DESCENDING" }
+  ]
+},
     {
       "collectionGroup": "Users",
       "queryScope": "COLLECTION",
@@ -436,3 +444,4 @@
   ],
   "fieldOverrides": []
 }
+

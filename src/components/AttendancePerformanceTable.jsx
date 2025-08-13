@@ -7,7 +7,11 @@ import {
 import { isPresent } from "../utils/attendanceUtils";
 
 function AttendancePerformanceTable({
-  mode, userRole, data, onEdit, onDelete, onBulkDelete, onCheck, onBulkAttendanceSave
+  mode, userRole, data, onEdit, onDelete, onBulkDelete, onCheck, onBulkAttendanceSave,
+  // ✅ 추가: 하단 검색창을 부모와 연동할지 여부/값/변경함수
+  useTableNameFilter = false,
+  nameQuery,
+  onNameQueryChange,
 }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [deleteResult, setDeleteResult] = useState(null);
@@ -179,7 +183,7 @@ function AttendancePerformanceTable({
       .map(row => ({ ...row, 출석여부: true }));
 
     try {
-      await onBulkAttendanceSave(selectedRows);
+     if (onBulkAttendanceSave) await onBulkAttendanceSave(selectedRows);
       setSelectedIds([]);
     } catch (error) {
       console.error("일괄 출석 저장 오류:", error);
@@ -229,12 +233,19 @@ function AttendancePerformanceTable({
         {/* ✅ 필터 섹션 추가 */}
         <Box sx={{ p: 2, pt: 0, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
           <TextField
-            label="이용자명 검색"
-            size="small"
-            value={filterConfig.이용자명}
-            onChange={(e) => handleFilterChange('이용자명', e.target.value)}
-            sx={{ minWidth: 150 }}
-          />
+    label="이용자명 검색"
+    size="small"
+    value={useTableNameFilter ? (nameQuery ?? "") : filterConfig.이용자명}
+    onChange={(e) => {
+      const v = e.target.value;
+      if (useTableNameFilter && onNameQueryChange) {
+        onNameQueryChange(v); // ✅ 부모의 tableNameQuery 업데이트 → isNameSearch=true → 전량 수집
+      } else {
+        handleFilterChange('이용자명', v);
+      }
+    }}
+    sx={{ minWidth: 150 }}
+  />
           
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <InputLabel>세부사업명</InputLabel>
@@ -393,15 +404,22 @@ function AttendancePerformanceTable({
         </Alert>
       )}
 
-      {/* ✅ 실적 모드에도 필터 섹션 추가 */}
-      <Box sx={{ p: 2, pt: 0, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
-        <TextField
-          label="이용자명 검색"
-          size="small"
-          value={filterConfig.이용자명}
-          onChange={(e) => handleFilterChange('이용자명', e.target.value)}
-          sx={{ minWidth: 150 }}
-        />
+      {/* 실적 모드에도 필터 섹션 추가 */}
+<Box sx={{ p: 2, pt: 0, display: "flex", gap: 2, flexWrap: "wrap", alignItems: "center" }}>
+  <TextField
+    label="이용자명 검색"
+    size="small"
+    value={useTableNameFilter ? (nameQuery || "") : filterConfig.이용자명}
+    onChange={(e) => {
+      const v = e.target.value;
+      if (useTableNameFilter && onNameQueryChange) {
+        onNameQueryChange(v);
+      } else {
+        handleFilterChange("이용자명", v);
+      }
+    }}
+    sx={{ minWidth: 150 }}
+  />
         
         <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel>세부사업명</InputLabel>

@@ -31,6 +31,7 @@ import { isPresent } from "../utils/attendanceUtils";
 import { getStructureBySubProgram, getAllTeamSubProgramMaps } from "../services/teamSubProgramMapAPI";
 import { teamSubProgramMap } from "../data/teamSubProgramMap";
 import { exportToExcel } from "../utils/exportToExcel";
+import { normalizeDate } from "../utils/dateUtils";
 
 function AttendancePerformanceManage() {
   const [mode, setMode] = useState("attendance");
@@ -51,6 +52,7 @@ function AttendancePerformanceManage() {
     function: "",
     unit: "",
   });
+  const [tableNameQuery, setTableNameQuery] = useState(""); // ✅ 테이블 전용 이름검색(로컬)
 
   const { role: userRole, loading: roleLoading } = useUserRole();
   const [SnackbarComp, showSnackbar] = useSnackbar();
@@ -64,6 +66,7 @@ function AttendancePerformanceManage() {
   const [uploadResult, setUploadResult] = useState(null);
   const unsubscribeRef = useRef(null);
   const [programStructureMap, setProgramStructureMap] = useState({});
+  const isNameSearch = !!tableNameQuery.trim(); // 이름 입력 시 전량 수집 모드
 
   // subProgram에서 teamName을 동적으로 매핑하는 함수
   const getTeamName = (subProgram) => {
@@ -72,6 +75,13 @@ function AttendancePerformanceManage() {
     }
     return "미매칭 팀";
   };
+
+  useEffect(() => {
+  if (mode === "performance") {
+    setPage(1);
+    setLastDocs([]);
+  }
+}, [tableNameQuery, mode]);
 
   // ✅ 38-55행을 다음으로 수정
 useEffect(() => {
@@ -205,17 +215,15 @@ useEffect(() => {
     } else if (mode === "performance") {
   setLoading(true);
   setError("");
-  // 기존 onSnapshot 구독 해제
+
+  // 기존 실시간 구독 해제
   if (unsubscribeRef.current) {
     unsubscribeRef.current();
     unsubscribeRef.current = null;
   }
 
-  // 페이징용 startAfterDoc 가져오기 (page가 1보다 클 때만)
-  const startAfterDoc = page > 1 ? lastDocs[page - 2] : null;
-
-  // 필터에 강사 세부사업 적용 로직 그대로 재구성
-  const currentFilters = { ...filters };
+  // 필터 구성 (강사 권한 적용은 그대로 유지)
+  const currentFilters = { ...filters, 이용자명: tableNameQuery || "" };
   if (userRole === "teacher" && subProgramOptions.length === 0) {
     setError("담당 세부사업이 설정되지 않았습니다. 관리자에게 문의하세요.");
     setLoading(false);
@@ -223,58 +231,75 @@ useEffect(() => {
   }
   if (userRole === "teacher" && subProgramOptions.length > 0) {
     currentFilters.세부사업명 = filters.세부사업명 || subProgramOptions[0];
-    // 강사는 다른 필터 제한 가능
     if (!filters.날짜) delete currentFilters.날짜;
   }
 
-  fetchPerformancesPaging({
-    filters: currentFilters,
-    pageSize,
-    startAfterDoc
-  })
-    .then(result => {
-      const items = result.items || [];
-      // 페이징 디버깅 로그
-  console.log(`@@@@ 페이지: ${page}, data.length: ${items.length}, startAfterDoc:`, startAfterDoc);
-  console.log('@@@@ result.lastDoc:', result.lastDoc);
-  console.log('@@@@ lastDocs:', lastDocs);
+  // 🔸 이름검색일 때는 '전체수집', 아니면 '서버페이징'
+  if (isNameSearch) {
+    // 한 페이지 모드: 전체 수집
+    fetchAllPerformancesPaged({ filters: currentFilters, batchSize: 1000 })
+      .then(all => {
+        const enrichedRows = (all || []).map(row => ({
+          ...row,
+          teamName: row.team || getTeamName(row.세부사업명)
+        }));
+        enrichedRows.sort((a, b) => {
+          const aKey = `${a.세부사업명 || ""}_${a.이용자명 || ""}`;
+          const bKey = `${b.세부사업명 || ""}_${b.이용자명 || ""}`;
+          return aKey.localeCompare(bKey, "ko");
+        });
+        setData(enrichedRows);
+        setTotalPages(1);     // 한 페이지
+        setLastDocs([]);      // 커서 초기화
+        setLoading(false);
+      })
+      .catch(err => {
+        setError("실적 데이터(전체) 로드 실패: " + err.message);
+        setData([]);
+        setTotalPages(1);
+        setLoading(false);
+      });
+  } else {
+    // 서버 페이징: startAfter 커서 사용
+    const startAfterDoc = page > 1 ? lastDocs[page - 2] : null;
 
-      const enrichedRows = items.map(row => ({
-        ...row,
-        teamName: row.team || getTeamName(row.세부사업명)
-      }));
+    fetchPerformancesPaging({
+      filters: currentFilters,
+      pageSize,
+      startAfterDoc
+    })
+      .then(result => {
+        const items = result.items || [];
+        const enrichedRows = items.map(row => ({
+          ...row,
+          teamName: row.team || getTeamName(row.세부사업명)
+        }));
+        enrichedRows.sort((a, b) => {
+          const aKey = `${a.세부사업명 || ""}_${a.이용자명 || ""}`;
+          const bKey = `${b.세부사업명 || ""}_${b.이용자명 || ""}`;
+          return aKey.localeCompare(bKey, "ko");
+        });
+        setData(enrichedRows);
 
-      enrichedRows.sort((a, b) => {
-      const aKey = `${a.세부사업명 || ""}_${a.이용자명 || ""}`;
-      const bKey = `${b.세부사업명 || ""}_${b.이용자명 || ""}`;
-      return aKey.localeCompare(bKey, "ko");
-    });
+        // 총건수 기반 페이지 계산
+        setTotalPages(result.total ? Math.ceil(result.total / pageSize) : 1);
 
-    setData(enrichedRows);
+        // 커서 저장
+        const newLastDocs = [...lastDocs];
+        if (result.items.length > 0 && result.lastDoc) {
+          newLastDocs[page - 1] = result.lastDoc;
+        }
+        setLastDocs(newLastDocs);
 
-    // 2) 총 데이터 개수를 받아 페이지 수 계산 후 상태 저장
-    // fetchPerformancesPaging이 {total} 필드를 반환해야 함
-    if (result.total) {
-      setTotalPages(Math.ceil(result.total / pageSize));
-    } else {
-      setTotalPages(1);
-    }
-
-    // 3) 페이지 커서 저장
-    const newLastDocs = [...lastDocs];
-if (result.items.length > 0 && result.lastDoc) {
-  newLastDocs[page - 1] = result.lastDoc;
-}
-setLastDocs(newLastDocs);
-
-    setLoading(false);
-  })
-  .catch(err => {
-    setError("실적 데이터(페이지) 로드 실패: " + err.message);
-    setLoading(false);
-    setData([]);
-    setTotalPages(1); // 실패 시 기본값 세팅
-  });
+        setLoading(false);
+      })
+      .catch(err => {
+        setError("실적 데이터(페이지) 로드 실패: " + err.message);
+        setData([]);
+        setTotalPages(1);
+        setLoading(false);
+      });
+  }
 }
 
     return () => {
@@ -283,7 +308,7 @@ setLastDocs(newLastDocs);
         unsubscribeRef.current = null;
       }
     };
-  }, [mode, filters.세부사업명, filters.날짜, filters.function, filters.unit, page]);
+  }, [mode, filters.세부사업명, filters.날짜, filters.function, filters.unit, page, tableNameQuery]);
 
   // ✅ 모드 변경 시 공통 초기화
 useEffect(() => {
@@ -293,59 +318,69 @@ useEffect(() => {
 }, [mode]);
 
   const handleSearch = async () => {
-  if (mode === "attendance") {
-    return;
-  } else {
-    setLoading(true);
-    setError("");
-    try {
-      // ✅ 강사 권한 시 담당 세부사업으로 필터링
-      let searchFilters = {
-        function: filters.function,
-        unit: filters.unit,
-        세부사업명: filters.세부사업명,
+  if (mode === "attendance") return;
+
+  setLoading(true);
+  setError("");
+
+  try {
+    // 필터 구성 (강사 권한 적용은 기존 그대로)
+    let searchFilters = {
+      function: filters.function,
+      unit: filters.unit,
+      세부사업명: filters.세부사업명,
+      날짜: filters.날짜,
+      이용자명: tableNameQuery,
+      performanceType: "개별"
+    };
+    if (userRole === "teacher" && subProgramOptions.length > 0) {
+      searchFilters = {
+        세부사업명: filters.세부사업명 || subProgramOptions[0],
         날짜: filters.날짜,
+        이용자명: tableNameQuery,
         performanceType: "개별"
       };
+    }
 
-      if (userRole === "teacher" && subProgramOptions.length > 0) {
-        // 강사는 담당 세부사업만 조회
-        searchFilters = {
-          세부사업명: filters.세부사업명 || subProgramOptions[0],
-          날짜: filters.날짜,
-          performanceType: "개별"
-        };
-      }
-
-      // 페이징용 startAfterDoc (page가 1보다 클 때만)
-      const startAfterDoc = (page > 1 && lastDocs[page - 2]) ? lastDocs[page - 2] : null;
-
-      const result = await fetchPerformancesPaging({
-        filters: searchFilters,
-        pageSize,
-        startAfterDoc
+    if (isNameSearch) {
+      // 🔸 이름검색: 전체 수집 → 한 페이지
+      const all = await fetchAllPerformancesPaged({ filters: searchFilters, batchSize: 1000 });
+      const enriched = (all || []).map(row => ({
+        ...row,
+        teamName: row.team || getTeamName(row.세부사업명)
+      }));
+      enriched.sort((a, b) => {
+        const aKey = `${a.세부사업명 || ""}_${a.이용자명 || ""}`;
+        const bKey = `${b.세부사업명 || ""}_${b.이용자명 || ""}`;
+        return aKey.localeCompare(bKey, "ko");
       });
+      setData(enriched);
+      setTotalPages(1);
+      setLastDocs([]);
+    } else {
+      // 🔹 일반: 서버 페이징
+      const startAfterDoc = (page > 1 && lastDocs[page - 2]) ? lastDocs[page - 2] : null;
+      const result = await fetchPerformancesPaging({ filters: searchFilters, pageSize, startAfterDoc });
 
       const items = result.items || [];
-      console.log("실적 데이터:", items);
+      const enriched = items.map(row => ({
+        ...row,
+        teamName: row.team || getTeamName(row.세부사업명)
+      }));
 
-      if (items.length === 0) {
-        setError("해당 조건에 맞는 실적 데이터가 없습니다.");
-      } else {
-        const enrichedResult = items.map(row => ({
-          ...row,
-          teamName: row.team || getTeamName(row.세부사업명)
-        }));
-        setData(enrichedResult);
+      setData(enriched);
+      setTotalPages(result.total ? Math.ceil(result.total / pageSize) : 1);
 
-        // 페이지 정보에 따른 커서 저장
-        const newLastDocs = [...lastDocs];
-        if (result.lastDoc) newLastDocs[page - 1] = result.lastDoc;
-        setLastDocs(newLastDocs);
-      }
-    } catch (e) {
-      setError("실적 데이터 불러오기 실패: " + e.message);
+      const newLastDocs = [...lastDocs];
+      if (result.lastDoc) newLastDocs[page - 1] = result.lastDoc;
+      setLastDocs(newLastDocs);
     }
+  } catch (e) {
+    setError("실적 데이터 불러오기 실패: " + e.message);
+    setData([]);
+    setTotalPages(1);
+    setLastDocs([]);
+  } finally {
     setLoading(false);
   }
 };
@@ -354,8 +389,34 @@ useEffect(() => {
 const handleExportAll = async () => {
   try {
     setLoading(true);
+
+    // 조회 필터 구성
+    let searchFilters = {
+      function: filters.function,
+      unit: filters.unit,
+      세부사업명: filters.세부사업명,
+      날짜: filters.날짜,
+      이용자명: tableNameQuery,
+      performanceType: "개별"
+    };
+
+    if (userRole === "teacher" && subProgramOptions.length > 0) {
+      searchFilters = {
+        세부사업명: filters.세부사업명 || subProgramOptions[0],
+        날짜: filters.날짜,
+        이용자명: tableNameQuery,
+        performanceType: "개별"
+      };
+    }
+
+    // 날짜 형식 통일
+    if (searchFilters.날짜) {
+      searchFilters.날짜 = normalizeDate(searchFilters.날짜);
+    }
+
+    // 전량 수집
     const allData = await fetchAllPerformancesPaged({
-      filters,
+      filters: searchFilters,
       batchSize: 500
     });
 
@@ -364,8 +425,21 @@ const handleExportAll = async () => {
       return;
     }
 
+    // 정렬: 날짜 오름차순 → 세부사업명 → 이용자명
+    const sorted = [...allData].sort((a, b) => {
+      const aDate = new Date(a.날짜 || "1900-01-01");
+      const bDate = new Date(b.날짜 || "1900-01-01");
+      if (aDate.getTime() !== bDate.getTime()) {
+        return aDate - bDate; // 오름차순
+      }
+      const spCompare = String(a.세부사업명 || "").localeCompare(String(b.세부사업명 || ""), "ko");
+      if (spCompare !== 0) return spCompare;
+      return String(a.이용자명 || "").localeCompare(String(b.이용자명 || ""), "ko");
+    });
+
+    // 엑셀 내보내기
     exportToExcel({
-      data: allData,
+      data: sorted,
       fileName: "실적_전체",
       sheetName: "전체"
     });
@@ -624,9 +698,6 @@ const handleExportAll = async () => {
 
   setPage(1);
   setLastDocs([]);
-  
-  // 직후 검색 호출 (debounce 적용 시 제외)
-  handleSearch();
 };
 
   if (roleLoading) {
@@ -739,7 +810,6 @@ const handleExportAll = async () => {
           setData([]);
           setError("");
           setUploadResult(null);
-          setTimeout(() => handleSearch(), 0);
         }}
         fullWidth
         size="large"
@@ -903,8 +973,7 @@ const handleExportAll = async () => {
     </Grid>
   </Box>
 )}
-
-{mode === "performance" && (
+{mode === "performance" && !isNameSearch && (
   <Box sx={{ display: "flex", alignItems: "center", gap: 2, justifyContent: "center", mb: 2 }}>
     <Button
       variant="outlined"
@@ -939,15 +1008,19 @@ const handleExportAll = async () => {
 
       {/* ✅ 핵심 기능: 체크박스 출석 체크 기능 완전 복원 */}
       <AttendancePerformanceTable
-        mode={mode}
-        userRole={userRole}
-        data={data}
-        onEdit={mode === "performance" ? handleEdit : undefined}
-        onDelete={mode === "performance" ? handleDelete : undefined}
-        onBulkDelete={mode === "performance" ? handleBulkDelete : undefined}
-        onCheck={mode === "attendance" ? handleCheck : undefined} // ✅ 개별 출석 체크
-        onBulkAttendanceSave={mode === "attendance" ? handleBulkAttendanceSave : undefined} // ✅ 일괄 출석 저장
-      />
+  mode={mode}
+  userRole={userRole}
+  data={data}
+  // ✅ 하단 이름검색만 사용
+  useTableNameFilter={true}
+  nameQuery={tableNameQuery}           // ✅ 부모 로컬 상태만 전달
+  onNameQueryChange={setTableNameQuery} // ✅ 서버와 무관한 setState
+  onEdit={mode === "performance" ? handleEdit : undefined}
+  onDelete={mode === "performance" ? handleDelete : undefined}
+  onBulkDelete={mode === "performance" ? handleBulkDelete : undefined}
+  onCheck={mode === "attendance" ? handleCheck : undefined}
+  onBulkAttendanceSave={mode === "attendance" ? handleBulkAttendanceSave : undefined}
+/>
 
       {/* ✅ 실적 수정 모달 */}
       <Dialog 

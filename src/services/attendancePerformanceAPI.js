@@ -5,6 +5,8 @@ import {
   orderBy,
   limit,
   startAfter,
+  startAt,
+  endAt,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -35,39 +37,41 @@ export async function getProgramSessionsForMonth(세부사업명, yearMonth) {
  *   - startAfterDoc: 페이지 커서 역할 문서 스냅샷
  */
 export async function fetchPerformancesPaging({ filters = {}, pageSize = 50, startAfterDoc = null }) {
-    let q = collection(db, "PerformanceSummary");
-    const conditions = [where("실적유형", "==", "개별")];
-    if (filters.function) conditions.push(where("기능", "==", filters.function));
-    if (filters.unit) conditions.push(where("단위사업명", "==", filters.unit));
-    if (filters.세부사업명) conditions.push(where("세부사업명", "==", filters.세부사업명));
-    if (filters.날짜) conditions.push(where("날짜", "==", filters.날짜));
-    if (filters.이용자명) conditions.push(where("이용자명", "==", filters.이용자명));
+  const baseRef = collection(db, "PerformanceSummary");
+  const conditions = [where("실적유형", "==", "개별")];
 
-    // 👉 (1) 전체 count용 쿼리
-    const countQuery = query(q, ...conditions);
+  if (filters.function) conditions.push(where("기능", "==", filters.function));
+  if (filters.unit) conditions.push(where("단위사업명", "==", filters.unit));
+  if (filters.세부사업명) conditions.push(where("세부사업명", "==", filters.세부사업명));
+  if (filters.날짜) conditions.push(where("날짜", "==", normalizeDate(filters.날짜)));
+  if (filters.이용자명) conditions.push(where("이용자명", "==", filters.이용자명));
 
-    // 👉 (2) getCountFromServer로 전체 건수 얻기
-    const countSnap = await getCountFromServer(countQuery);
-    const total = countSnap.data().count;
+  let total = null;
+  try {
+    const countQ = query(baseRef, ...conditions);
+    const countSnap = await getCountFromServer(countQ);
+    total = countSnap.data().count;
+  } catch (e) {
+    console.warn("getCountFromServer skipped:", e?.message || e);
+  }
 
-    // 👉 (3) 페이지 조회 쿼리 구성
-    let baseQuery = query(
-        q,
-        ...conditions,
-        orderBy("날짜", "desc"),
-        orderBy("__name__"),
-        limit(pageSize)
-    );
-    if (startAfterDoc) {
-        baseQuery = query(baseQuery, startAfter(startAfterDoc));
-    }
-    const snapshot = await getDocs(baseQuery);
+  let q = query(
+    baseRef,
+    ...conditions,
+    orderBy("날짜", "desc"),
+    orderBy("__name__"),
+    limit(pageSize)
+  );
+  if (startAfterDoc) {
+    q = query(q, startAfter(startAfterDoc));
+  }
 
-    return {
-        items: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-        lastDoc: snapshot.docs[snapshot.docs.length - 1] || null,
-        total         // 👈 전체 건수 반환!
-    };
+  const snap = await getDocs(q);
+  return {
+    items: snap.docs.map(d => ({ id: d.id, ...d.data() })),
+    lastDoc: snap.docs[snap.docs.length - 1] || null,
+    total
+  };
 }
 
 // 고유아이디 조회
@@ -829,22 +833,37 @@ export async function fetchAllPerformancesPaged(args) {
   const batchSize = args && args.batchSize ? args.batchSize : 500;
 
   const baseRef = collection(db, "PerformanceSummary");
-  const conds = [];
+  const conds = [where("실적유형", "==", "개별")];
 
   if (filters.function) conds.push(where("기능", "==", filters.function));
   if (filters.unit) conds.push(where("단위사업명", "==", filters.unit));
   if (filters.팀명) conds.push(where("팀명", "==", filters.팀명));
   if (filters.세부사업명) conds.push(where("세부사업명", "==", filters.세부사업명));
-  if (filters.날짜) conds.push(where("날짜", "==", filters.날짜));
-  if (filters.이용자명) conds.push(where("이용자명", "==", filters.이용자명));
+  if (filters.날짜) conds.push(where("날짜", "==", normalizeDate(filters.날짜)));
 
-  let q = query(
-    baseRef,
-    ...conds,
-    orderBy("날짜", "desc"),
-    orderBy("__name__"),
-    limit(batchSize)
-  );
+  const namePrefix = (filters.이용자명 || "").trim();
+
+  let q;
+  if (namePrefix) {
+    q = query(
+      baseRef,
+      ...conds,
+      orderBy("이용자명"),
+      orderBy("날짜", "desc"),
+      orderBy("__name__"),
+      startAt(namePrefix),
+      endAt(namePrefix + "\uf8ff"),
+      limit(batchSize)
+    );
+  } else {
+    q = query(
+      baseRef,
+      ...conds,
+      orderBy("날짜", "desc"),
+      orderBy("__name__"),
+      limit(batchSize)
+    );
+  }
 
   const all = [];
   let lastDoc = null;
@@ -858,14 +877,29 @@ export async function fetchAllPerformancesPaged(args) {
     }
 
     lastDoc = snap.docs[snap.docs.length - 1];
-    q = query(
-      baseRef,
-      ...conds,
-      orderBy("날짜", "desc"),
-      orderBy("__name__"),
-      startAfter(lastDoc),
-      limit(batchSize)
-    );
+
+    if (namePrefix) {
+      q = query(
+        baseRef,
+        ...conds,
+        orderBy("이용자명"),
+        orderBy("날짜", "desc"),
+        orderBy("__name__"),
+        startAt(namePrefix),
+        endAt(namePrefix + "\uf8ff"),
+        startAfter(lastDoc),
+        limit(batchSize)
+      );
+    } else {
+      q = query(
+        baseRef,
+        ...conds,
+        orderBy("날짜", "desc"),
+        orderBy("__name__"),
+        startAfter(lastDoc),
+        limit(batchSize)
+      );
+    }
   }
 
   return all;

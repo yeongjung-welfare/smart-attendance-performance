@@ -283,16 +283,17 @@ export async function deleteMultipleSubProgramMembers(ids) {
   }
 }
 
-export async function findMemberByNameAndPhone(name, phone) {
+export async function findMemberByNameAndPhone(name, phone, subProgramName) {
   try {
     if (!name || !phone) return null;
     
     const normalizedPhone = normalizePhone(phone);
-    const q = query(
-      subProgramMemberCollection,
-      where("이용자명", "==", name),
-      where("연락처", "==", normalizedPhone)
-    );
+    const conds = [
+     where("이용자명", "==", name),
+     where("연락처", "==", normalizedPhone)
+   ];
+   if (subProgramName) conds.push(where("세부사업명", "==", subProgramName));
+   const q = query(subProgramMemberCollection, ...conds);
 
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;

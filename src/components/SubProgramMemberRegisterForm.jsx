@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
   TextField, MenuItem, Button, Grid, useMediaQuery, InputAdornment, Alert, 
-  Autocomplete, FormControl, InputLabel, Select, Box, Paper, Typography
+  Autocomplete, FormControl, InputLabel, Select, Paper, Typography
 } from "@mui/material";
 import { getAllMembers, checkDuplicateMember, registerMember } from "../services/memberAPI";
 import { getAgeGroup } from "../utils/ageGroup";
@@ -18,6 +18,7 @@ function normalizePhone(phone) {
 }
 
 function SubProgramMemberRegisterForm({
+  mode = "create",                  // ✅ 등록/수정 모드 명시
   onRegister,
   initialData,
   filters,
@@ -25,7 +26,7 @@ function SubProgramMemberRegisterForm({
   directSubProgramSelect = false,
   allSubPrograms = []
 }) {
-  const isMobile = useMediaQuery("(max-width:600px)");
+  const isEdit = mode === "edit";
 
   // ✅ console.log를 컴포넌트 내부로 이동
   console.log("🔍 SubProgramMemberRegisterForm props 확인:", {
@@ -52,10 +53,19 @@ const [availableSubPrograms, setAvailableSubPrograms] = useState([]);
 
   const [error, setError] = useState("");
   const [allMembers, setAllMembers] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    getAllMembers().then(setAllMembers);
-  }, []);
+  (async () => {
+    try {
+      const list = await getAllMembers();
+      setAllMembers(Array.isArray(list) ? list : []);
+    } catch (e) {
+      console.warn("전체회원 목록 로드 실패:", e);
+      setAllMembers([]);
+    }
+  })();
+}, []);
 
   // ✅ 세부사업 옵션 동적 설정
 useEffect(() => {
@@ -148,6 +158,16 @@ useEffect(() => {
   // ✅ 안전한 날짜 처리 - 문자열로 저장
   const 생년월일 = normalizeDate(form.생년월일);
   const 연락처 = normalizePhone(form.연락처);
+  const phoneDigits = (연락처 || "").replace(/\D/g, "");
+if (phoneDigits.length !== 11) {
+  setError("연락처는 11자리 숫자여야 합니다. 예) 010-1234-5678");
+  return;
+}
+
+if (!/^\d{4}-\d{2}-\d{2}$/.test(생년월일)) {
+  setError("생년월일은 YYYY-MM-DD 형식이어야 합니다.");
+  return;
+}
 
   console.log("📝 세부사업 등록 데이터:", {
     이용자명: form.이용자명,
@@ -158,6 +178,11 @@ useEffect(() => {
   });
 
   // ✅ 🔥 전체회원 존재 여부 검증 (새로 추가)
+  try {
+  if (submitting) return;
+  setSubmitting(true);
+
+  // ✅ 🔥 전체회원 존재 여부 검증 (try 내부로 이동)
   const memberExists = await checkDuplicateMember({
     name: form.이용자명.trim(),
     birthdate: 생년월일,
@@ -168,78 +193,84 @@ useEffect(() => {
     const confirmResult = window.confirm(
       `'${form.이용자명}' 이용자가 전체회원 관리에 등록되어 있지 않습니다.\n\n전체회원으로 먼저 등록하시겠습니까?\n\n• 확인: 전체회원으로 등록 후 세부사업 등록 진행\n• 취소: 등록 중단 (전체회원 관리에서 먼저 등록 필요)`
     );
-    
     if (!confirmResult) {
       setError("전체회원 관리에서 해당 이용자를 먼저 등록해주세요.");
       return;
     }
   }
 
+  // ✅ 중복 여부 재확인 (try 내부)
   const isDuplicate = await checkDuplicateMember({
     name: form.이용자명.trim(),
     birthdate: 생년월일,
     phone: 연락처
   });
 
-    if (!initialData && isDuplicate) {
-      setError("이미 등록된 회원입니다. 세부사업별 등록을 진행합니다.");
-      
-      const fullMember = {
-        ...form,
-        생년월일, // ✅ 문자열로 저장
-        연락처, // ✅ 정규화된 전화번호
-        연령대: getAgeGroup(생년월일.substring(0, 4)),
-        팀명: filters?.팀명,
-        단위사업명: filters?.단위사업명
-      };
-      
-      onRegister(fullMember);
-      return;
-    }
+  if (!initialData && isDuplicate) {
+  // 안내 메시지는 에러 대신 스낵바(상위)에서 띄우는 편이 좋아요. 여기서는 에러 제거.
+  const fullMember = {
+    ...form,
+    생년월일,
+    연락처,
+    연령대: getAgeGroup(생년월일.substring(0, 4)),
+    팀명: filters?.팀명,
+    단위사업명: filters?.단위사업명
+  };
+  await onRegister(fullMember);
+  setError(""); // 불필요한 에러 잔상 제거
+  return;
+}
 
-    try {
-      // ✅ 전체회원 등록 시에도 문자열로 저장
-      if (!initialData) {
-        const memberData = {
-          name: form.이용자명.trim(),
-          gender: form.성별,
-          birthdate: 생년월일, // ✅ 문자열로 저장 (Date 객체 제거)
-          phone: 연락처, // ✅ 정규화된 전화번호
-          address: form.주소,
-          incomeType: form.소득구분,
-          registrationDate: getCurrentKoreanDate() // ✅ 문자열로 저장
-        };
+  // (1) 전체회원 신규 등록 (사용자가 동의했고, 실제로 없을 때만)
+  if (!initialData && !memberExists) {
+    await registerMember({
+      name: form.이용자명.trim(),
+      gender: form.성별,
+      birthdate: 생년월일,
+      phone: 연락처,
+      address: form.주소,
+      incomeType: form.소득구분,
+      registrationDate: getCurrentKoreanDate()
+    });
+  }
 
-        await registerMember(memberData);
-      }
+  // (2) 세부사업 등록 payload 정리
+  const { id: _ignoredId, ...formWithoutId } = form;
+  const birthYear = (생년월일 || "").slice(0, 4);
+  const safeAgeGroup = birthYear.length === 4 ? getAgeGroup(birthYear) : "미상";
 
-      const fullMember = {
-        ...form,
-        생년월일, // ✅ 문자열로 저장
-        연락처, // ✅ 정규화된 전화번호
-        연령대: getAgeGroup(생년월일.substring(0, 4)),
-        팀명: filters?.팀명,
-        단위사업명: filters?.단위사업명
-      };
+  const fullMember = {
+    ...formWithoutId,
+    생년월일,
+    연락처,
+    연령대: safeAgeGroup,
+    팀명: filters?.팀명,
+    단위사업명: filters?.단위사업명
+  };
 
-      onRegister(fullMember);
+  await onRegister(fullMember);
+setError("");                 // ✅ 성공 후 에러 메시지 클리어
 
-      if (!initialData) {
-        setForm({
-          세부사업명: filters?.세부사업명 || "",
-          이용자명: "",
-          성별: "",
-          생년월일: "",
-          연락처: "",
-          주소: "",
-          소득구분: "일반",
-          유료무료: "무료",
-          이용상태: "이용"
-        });
-      }
-    } catch (err) {
-      setError("등록 실패: " + err.message);
-    }
+  // (3) 신규 등록이면 폼 리셋
+  if (!initialData) {
+    setForm({
+      세부사업명: filters?.세부사업명 || "",
+      이용자명: "",
+      성별: "",
+      생년월일: "",
+      연락처: "",
+      주소: "",
+      소득구분: "일반",
+      유료무료: "무료",
+      이용상태: "이용"
+    });
+  }
+
+} catch (err) {
+  setError("등록 실패: " + err.message);
+} finally {
+  setSubmitting(false);
+}
   };
 
   const handlePostcodeSearch = () => {
@@ -272,13 +303,14 @@ useEffect(() => {
           {/* 전체회원에서 선택 */}
           <Grid item xs={12}>
             <Autocomplete
-              options={allMembers}
-              getOptionLabel={(option) => `${option.name} (${option.phone || '연락처 없음'})`}
-              onChange={handleMemberSelect}
-              renderInput={(params) => (
-                <TextField {...params} label="전체회원에서 선택 (선택사항)" />
-              )}
-            />
+  options={allMembers}
+  getOptionLabel={(o) => (o?.name ? `${o.name} (${o.phone || '연락처 없음'})` : '')}
+  isOptionEqualToValue={(o, v) =>
+    (o?.id && v?.id && o.id === v.id) || (o?.name === v?.name && o?.phone === v?.phone)
+  }
+  onChange={handleMemberSelect}
+  renderInput={(params) => <TextField {...params} label="전체회원에서 선택 (선택사항)" />}
+/>
           </Grid>
 
           {/* 세부사업명 */}
@@ -290,7 +322,6 @@ useEffect(() => {
     value={form.세부사업명}
     onChange={handleChange}
     required
-    disabled={!directSubProgramSelect}
     MenuProps={{
       PaperProps: {
         sx: {
@@ -385,7 +416,7 @@ useEffect(() => {
               select
             >
               <MenuItem value="일반">일반</MenuItem>
-              <MenuItem value="기초수급">기초수급</MenuItem>
+              <MenuItem value="기초생활수급자">기초생활수급자</MenuItem>
               <MenuItem value="차상위">차상위</MenuItem>
               <MenuItem value="국가유공자">국가유공자</MenuItem>
             </TextField>
@@ -444,14 +475,16 @@ useEffect(() => {
           {/* 제출 버튼 */}
           <Grid item xs={12}>
             <Button
-              type="submit"
-              variant="contained"
-              fullWidth
-              size="large"
-              sx={{ mt: 2 }}
-            >
-              {initialData ? "수정" : "등록"}
-            </Button>
+  type="submit"
+  variant="contained"
+  fullWidth
+  size="large"
+  disabled={submitting}
+  aria-busy={submitting}
+  sx={{ mt: 2 }}
+>
+  {submitting ? "처리 중..." : (isEdit ? "수정" : "저장")}
+</Button>
           </Grid>
         </Grid>
       </form>

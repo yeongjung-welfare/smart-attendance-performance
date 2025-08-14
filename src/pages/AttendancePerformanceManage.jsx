@@ -390,7 +390,6 @@ const handleExportAll = async () => {
   try {
     setLoading(true);
 
-    // 조회 필터 구성
     let searchFilters = {
       function: filters.function,
       unit: filters.unit,
@@ -409,12 +408,10 @@ const handleExportAll = async () => {
       };
     }
 
-    // 날짜 형식 통일
     if (searchFilters.날짜) {
       searchFilters.날짜 = normalizeDate(searchFilters.날짜);
     }
 
-    // 전량 수집
     const allData = await fetchAllPerformancesPaged({
       filters: searchFilters,
       batchSize: 500
@@ -425,21 +422,65 @@ const handleExportAll = async () => {
       return;
     }
 
-    // 정렬: 날짜 오름차순 → 세부사업명 → 이용자명
+    const toStr = v => (v === undefined || v === null) ? "" : String(v);
+
+    const getTeamSafe = (row) =>
+      row.팀명 || row.team || row.teamName || getTeamName(row.세부사업명 || "");
+
+    const getFuncSafe = (row) =>
+      row.기능 || row.function || "";
+
+    const getUnitSafe = (row) =>
+      row.단위사업명 || row.unit || "";
+
+    const getContentSafe = (row) =>
+      row["내용(특이사항)"] || row.내용 || row.remark || "";
+
     const sorted = [...allData].sort((a, b) => {
-      const aDate = new Date(a.날짜 || "1900-01-01");
-      const bDate = new Date(b.날짜 || "1900-01-01");
-      if (aDate.getTime() !== bDate.getTime()) {
-        return aDate - bDate; // 오름차순
-      }
-      const spCompare = String(a.세부사업명 || "").localeCompare(String(b.세부사업명 || ""), "ko");
-      if (spCompare !== 0) return spCompare;
-      return String(a.이용자명 || "").localeCompare(String(b.이용자명 || ""), "ko");
+      const aTeam = toStr(getTeamSafe(a));
+      const bTeam = toStr(getTeamSafe(b));
+      const teamCmp = aTeam.localeCompare(bTeam, "ko");
+      if (teamCmp !== 0) return teamCmp;
+
+      const aFunc = toStr(getFuncSafe(a));
+      const bFunc = toStr(getFuncSafe(b));
+      const funcCmp = aFunc.localeCompare(bFunc, "ko");
+      if (funcCmp !== 0) return funcCmp;
+
+      const aUnit = toStr(getUnitSafe(a));
+      const bUnit = toStr(getUnitSafe(b));
+      const unitCmp = aUnit.localeCompare(bUnit, "ko");
+      if (unitCmp !== 0) return unitCmp;
+
+      const aSub = toStr(a.세부사업명);
+      const bSub = toStr(b.세부사업명);
+      const subCmp = aSub.localeCompare(bSub, "ko");
+      if (subCmp !== 0) return subCmp;
+
+      const aDate = new Date(a.날짜 || "1900-01-01").getTime();
+      const bDate = new Date(b.날짜 || "1900-01-01").getTime();
+      if (aDate !== bDate) return aDate - bDate;
+
+      const aName = toStr(a.이용자명);
+      const bName = toStr(b.이용자명);
+      return aName.localeCompare(bName, "ko");
     });
 
-    // 엑셀 내보내기
+    const exportRows = sorted.map(row => {
+      const out = {};
+      out["팀명"] = getTeamSafe(row);
+      out["기능"] = getFuncSafe(row);
+      out["단위사업명"] = getUnitSafe(row);
+      out["세부사업명"] = row.세부사업명 || "";
+      out["날짜"] = row.날짜 || "";
+      out["이용자명"] = row.이용자명 || "";
+      out["성별"] = row.성별 || "";
+      out["내용(특이사항)"] = getContentSafe(row);
+      return out;
+    });
+
     exportToExcel({
-      data: sorted,
+      data: exportRows,
       fileName: "실적_전체",
       sheetName: "전체"
     });
@@ -763,24 +804,15 @@ const handleExportAll = async () => {
       )}
 
       {mode === "performance" && (
-        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
-          <ExportButton
-            data={data}
-            fileName="실적_조회.xlsx"
-            label="엑셀 다운로드"
-            headers={[
-              ["날짜", "날짜"],
-              ["세부사업명", "세부사업명"],
-              ["이용자명", "이용자명"],
-              ["성별", "성별"],
-              ["내용(특이사항)", "내용(특이사항)"],
-              ["출석여부", "출석여부"],
-              ["고유아이디", "고유아이디"]
-            ]}
-            onExport={handleExportAll}
-          />
-        </Box>
-      )}
+  <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+    <ExportButton
+      data={data}
+      fileName="실적_조회.xlsx"
+      label="엑셀 다운로드"
+      onExport={handleExportAll}
+    />
+  </Box>
+)}
 
       {mode === "performance" && <PerformanceStats data={data} />}
 

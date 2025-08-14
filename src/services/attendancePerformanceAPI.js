@@ -282,6 +282,163 @@ if (isDuplicate) {
   return results;
 }
 
+// ✅ 새로 추가: 대량 출석을 배치로 저장(경고/부하 완화)
+export async function saveAttendanceRecordsBatched(records, chunkSize = 350) {
+  const collectionRef = collection(db, "AttendanceRecords");
+  const perfCollectionRef = collection(db, "PerformanceSummary");
+  const results = [];
+
+  let batch = writeBatch(db);
+  let pendingOps = 0;
+
+  async function flush() {
+    if (pendingOps > 0) {
+      await batch.commit();
+      batch = writeBatch(db);
+      pendingOps = 0;
+    }
+  }
+
+  for (const record of records) {
+    try {
+      const 세부사업명 = record.세부사업명 || record.subProgram || "";
+      const 이용자명 = record.이용자명 || record.memberName || "";
+      const 성별 = record.성별 || record.gender || "";
+      const 연락처 = record.연락처 || record.phone || "";
+      const 내용 = record["내용(특이사항)"] || record.note || "";
+      const normalizedDate = normalizeDate(record.날짜 || record.date);
+      const 출석여부 = isPresent(record.출석여부);
+      const 생년월일 = record.생년월일 ? normalizeDate(record.생년월일) : "";
+
+      const 고유아이디목록 = record.고유아이디
+        ? [record.고유아이디]
+        : await getUserIds(이용자명, 성별, 세부사업명);
+
+      if (고유아이디목록.length === 0) {
+        results.push({ success: false, record, error: "고유아이디 없음 (동명이인/미등록)" });
+        continue;
+      }
+
+      let feeType = record.feeType || record.유료무료 || "";
+      if (!feeType && 세부사업명 && 이용자명) {
+        const members = await getSubProgramMembers({ 세부사업명 });
+        const member = members.find(m => m.이용자명 === 이용자명 && m.성별 === 성별);
+        if (member) feeType = member.유료무료 || "";
+      }
+
+      let 기능 = record.function || record.기능 || "";
+      let 단위사업명 = record.unit || record.단위사업명 || "";
+      let 팀명 = record.team || record.팀명 || "";
+      if ((!기능 || !단위사업명 || !팀명) && 세부사업명) {
+        try {
+          const map = await getStructureBySubProgram(세부사업명);
+          if (map) {
+            기능 = 기능 || map.function;
+            단위사업명 = 단위사업명 || map.unit;
+            팀명 = 팀명 || map.team;
+          }
+        } catch {
+          기능 = 기능 || "오류";
+          단위사업명 = 단위사업명 || "오류";
+          팀명 = 팀명 || "오류";
+        }
+      }
+
+      let sessions = Number(record.횟수) || 1;
+      let cases = (!record.연인원 && !record.실인원) ? (Number(record.건수) || 0) : 0;
+
+      for (const 고유아이디 of 고유아이디목록) {
+        // --- 기존 saveAttendanceRecords와 동일한 1~3순위 중복검사 ---
+        let isDuplicate = false;
+
+        let q = query(
+          collectionRef,
+          where("날짜", "==", normalizedDate),
+          where("세부사업명", "==", 세부사업명),
+          where("고유아이디", "==", 고유아이디)
+        );
+        let snapshot = await getDocs(q);
+        if (!snapshot.empty) isDuplicate = true;
+
+        if (!isDuplicate) {
+          q = query(
+            collectionRef,
+            where("날짜", "==", normalizedDate),
+            where("세부사업명", "==", 세부사업명),
+            where("이용자명", "==", 이용자명),
+            where("성별", "==", 성별),
+            ...(생년월일 ? [where("생년월일", "==", 생년월일)] : []),
+            ...(연락처 ? [where("연락처", "==", 연락처)] : [])
+          );
+          snapshot = await getDocs(q);
+          if (!snapshot.empty) isDuplicate = true;
+        }
+
+        if (!isDuplicate) {
+          q = query(
+            collectionRef,
+            where("날짜", "==", normalizedDate),
+            where("세부사업명", "==", 세부사업명),
+            where("이용자명", "==", 이용자명),
+            where("성별", "==", 성별)
+          );
+          snapshot = await getDocs(q);
+          if (!snapshot.empty) isDuplicate = true;
+        }
+
+        if (isDuplicate) {
+          results.push({ success: false, record, error: "이미 등록된 출석 (다중 기준 충족)" });
+          continue;
+        }
+
+        // --- AttendanceRecords: set (배치) ---
+        const attRef = doc(collectionRef);
+        const docData = {
+          날짜: normalizedDate,
+          세부사업명, 이용자명, 성별, 연락처, 생년월일,
+          "내용(특이사항)": 내용,
+          고유아이디, 출석여부, feeType, 기능, 단위사업명, 팀명,
+          sessions, cases, createdAt: getCurrentKoreanDate()
+        };
+        batch.set(attRef, docData);
+        pendingOps++;
+
+        // --- PerformanceSummary: upsert (배치) ---
+        const perfQ = query(
+          perfCollectionRef,
+          where("날짜", "==", normalizedDate),
+          where("세부사업명", "==", 세부사업명),
+          where("고유아이디", "==", 고유아이디)
+        );
+        const perfSnap = await getDocs(perfQ);
+
+        if (perfSnap.empty) {
+          const newPerfRef = doc(perfCollectionRef);
+          batch.set(newPerfRef, { ...docData, 실적유형: "개별" });
+          pendingOps++;
+        } else {
+          const prev = perfSnap.docs[0].data();
+          const perfDocRef = doc(db, "PerformanceSummary", perfSnap.docs[0].id);
+          batch.update(perfDocRef, {
+            ...docData,
+            sessions: (Number(prev.sessions) || 1) + sessions,
+            cases: (Number(prev.cases) || 0) + cases
+          });
+          pendingOps++;
+        }
+
+        if (pendingOps >= chunkSize) await flush();
+        results.push({ success: true, record, 고유아이디 });
+      }
+    } catch (err) {
+      results.push({ success: false, record, error: err.message });
+    }
+  }
+
+  await flush();
+  return results;
+}
+
 // 출석 전체 조회 (필터 적용)
 export async function fetchAttendances(filters = {}) {
   let q = collection(db, "AttendanceRecords");
@@ -801,7 +958,9 @@ export async function uploadAttendanceData(rows) {
     }
   }
 }
-  return await saveAttendanceRecords(rows);
+  return rows.length > 350
+  ? await saveAttendanceRecordsBatched(rows, 350) // ✅ 대량일 때 배치 저장
+  : await saveAttendanceRecords(rows);            // ✅ 소량은 기존 로직
 }
 
 // 세부사업명 기준 실적 조회

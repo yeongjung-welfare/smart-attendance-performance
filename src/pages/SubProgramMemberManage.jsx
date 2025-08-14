@@ -271,19 +271,6 @@ const getActiveMembers = () => {
           showSnackbar(`'${member.이용자명}' 이용자가 전체회원 관리에 등록되어 있지 않습니다. 전체회원으로 먼저 등록해주세요.`, "error");
           return;
         }
-
-        const exist = await findMemberByNameAndPhone(member.이용자명.trim(), member.연락처.trim());
-        if (exist) {
-          await updateSubProgramMember(exist.id, {
-            ...member,
-            세부사업명: member.세부사업명,
-            팀명: filters.팀명,
-            단위사업명: filters.단위사업명
-          });
-          showSnackbar(`동일인 정보 업데이트 완료 (ID: ${exist.고유아이디})`, "info");
-          await reloadAfterChange();
-          return;
-        }
       }
 
       const newId = await registerSubProgramMember({
@@ -977,17 +964,22 @@ const getActiveMembers = () => {
           <DialogTitle id="register-dialog-title">회원 등록</DialogTitle>
           <DialogContent>
             <SubProgramMemberRegisterForm
-              onRegister={(data) => {
-                handleRegister(data);
-                setShowRegisterDialog(false);
-                setPendingMember(null);
-              }}
-              initialData={pendingMember}
-              filters={filters}
-              subProgramOptions={subProgramOptions} // ✅ 이제 항상 전체 세부사업 포함
-              directSubProgramSelect={true}
-              allSubPrograms={allSubPrograms} // ✅ 백업용 전체 세부사업 목록 추가
-            />
+  mode="create"                      // ✅ 등록 모드 고정
+  onRegister={(data) => {
+    handleRegister(data);
+    setShowRegisterDialog(false);
+    setPendingMember(null);
+  }}
+  // ✅ 혹시 모를 id 제거(덮어쓰기 방지)
+  initialData={(() => {
+    const { id, ...rest } = pendingMember || {};
+    return rest;
+  })()}
+  filters={filters}
+  subProgramOptions={subProgramOptions}
+  directSubProgramSelect={true}
+  allSubPrograms={allSubPrograms}
+/>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => {

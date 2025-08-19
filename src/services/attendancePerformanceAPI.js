@@ -199,7 +199,7 @@ export async function saveAttendanceRecords(records) {
         // ✅ 다중 중복 체크 로직 (1순위 → 3순위)
 let isDuplicate = false;
 
-// 1순위: 날짜 + 세부사업명 + 고유아이디
+// 고유아이디 기준 중복만 체크 (동명이인 허용)
 let q = query(
   collectionRef,
   where("날짜", "==", normalizedDate),
@@ -211,40 +211,8 @@ if (!snapshot.empty) {
   isDuplicate = true;
 }
 
-// 2순위: 날짜 + 세부사업명 + 이용자명 + 성별 + 생년월일 + 연락처
-if (!isDuplicate) {
-  q = query(
-    collectionRef,
-    where("날짜", "==", normalizedDate),
-    where("세부사업명", "==", 세부사업명),
-    where("이용자명", "==", 이용자명),
-    where("성별", "==", 성별),
-    ...(생년월일 ? [where("생년월일", "==", 생년월일)] : []),
-    ...(연락처 ? [where("연락처", "==", 연락처)] : [])
-  );
-  snapshot = await getDocs(q);
-  if (!snapshot.empty) {
-    isDuplicate = true;
-  }
-}
-
-// 3순위: 날짜 + 세부사업명 + 이용자명 + 성별
-if (!isDuplicate) {
-  q = query(
-    collectionRef,
-    where("날짜", "==", normalizedDate),
-    where("세부사업명", "==", 세부사업명),
-    where("이용자명", "==", 이용자명),
-    where("성별", "==", 성별)
-  );
-  snapshot = await getDocs(q);
-  if (!snapshot.empty) {
-    isDuplicate = true;
-  }
-}
-
 if (isDuplicate) {
-  results.push({ success: false, record, error: `이미 등록된 출석 (다중 기준 충족)` });
+  results.push({ success: false, record, error: "이미 등록된 출석 (고유아이디 기준)" });
   continue;
 }
 
@@ -351,6 +319,7 @@ export async function saveAttendanceRecordsBatched(records, chunkSize = 350) {
         // --- 기존 saveAttendanceRecords와 동일한 1~3순위 중복검사 ---
         let isDuplicate = false;
 
+        // 고유아이디 기준 중복만 체크 (동명이인 허용)
         let q = query(
           collectionRef,
           where("날짜", "==", normalizedDate),
@@ -360,34 +329,8 @@ export async function saveAttendanceRecordsBatched(records, chunkSize = 350) {
         let snapshot = await getDocs(q);
         if (!snapshot.empty) isDuplicate = true;
 
-        if (!isDuplicate) {
-          q = query(
-            collectionRef,
-            where("날짜", "==", normalizedDate),
-            where("세부사업명", "==", 세부사업명),
-            where("이용자명", "==", 이용자명),
-            where("성별", "==", 성별),
-            ...(생년월일 ? [where("생년월일", "==", 생년월일)] : []),
-            ...(연락처 ? [where("연락처", "==", 연락처)] : [])
-          );
-          snapshot = await getDocs(q);
-          if (!snapshot.empty) isDuplicate = true;
-        }
-
-        if (!isDuplicate) {
-          q = query(
-            collectionRef,
-            where("날짜", "==", normalizedDate),
-            where("세부사업명", "==", 세부사업명),
-            where("이용자명", "==", 이용자명),
-            where("성별", "==", 성별)
-          );
-          snapshot = await getDocs(q);
-          if (!snapshot.empty) isDuplicate = true;
-        }
-
         if (isDuplicate) {
-          results.push({ success: false, record, error: "이미 등록된 출석 (다중 기준 충족)" });
+          results.push({ success: false, record, error: "이미 등록된 출석 (고유아이디 기준)" });
           continue;
         }
 

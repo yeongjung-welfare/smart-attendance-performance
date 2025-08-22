@@ -14,6 +14,27 @@ import useSnackbar from "./useSnackbar";
 import { getStructureBySubProgram } from "../services/teamSubProgramMapAPI";
 import { normalizeDate, getCurrentKoreanDate } from "../utils/dateUtils";
 
+// 파일 상단 import 아래 추가 (기존 코드 대체)
+function normalizeSubProgramName(v) {
+  return String(v ?? "")
+    .replace(/\u00A0|\u200B|\u200C|\u200D|\uFEFF/g, "")
+    .replace(/[()［］\[\]{}<>\-·,.'"]/g, "") // 특수기호·대쉬 등
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function normalizeRow(row = {}) {
+  const r = { ...row };
+  r.세부사업명 = normalizeSubProgramName(r.세부사업명);
+  r.단위사업명 = (r.단위사업명 || "").trim();
+  r.기능 = (r.기능 || "").trim();
+  r.팀명 = (r.팀명 || "").trim();
+  // 날짜 문자열도 가급적 통일
+  if (r.날짜) r.날짜 = normalizeDate(r.날짜);
+  return r;
+}
+
 function PerformanceBulkUploadForm({ onSuccess, onCancel }) {
   const fileInput = useRef();
   const [uploading, setUploading] = useState(false);
@@ -130,7 +151,9 @@ function PerformanceBulkUploadForm({ onSuccess, onCancel }) {
       }
 
       if (processedRows.length > 0) {
-  const uploadResult = await uploadBulkPerformanceSummary(processedRows);
+  const uploadResult = await uploadBulkPerformanceSummary(
+    processedRows.map(normalizeRow) // ✅ 정규화 적용
+  );
   
   // ✅ API 결과만으로 정확한 카운팅
   const successCount = uploadResult.filter(r => r.success).length;

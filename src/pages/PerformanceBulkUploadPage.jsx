@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { resetTeamSubProgramMapCache } from "../services/teamSubProgramMapAPI";
 import PerformanceBulkUploadForm from "../components/PerformanceBulkUploadForm";
 import PerformanceBulkUploadTable from "../components/PerformanceBulkUploadTable";
 import {
@@ -789,7 +790,8 @@ function PerformanceBulkUploadPage() {
   };
 
   useEffect(() => {
-    loadBulkPerformances();
+    resetTeamSubProgramMapCache();  // 캐시 초기화 함수 호출
+    loadBulkPerformances();          // 대량실적 데이터 로드 함수 호출
   }, []);
 
   const handleSyncStats = async () => {

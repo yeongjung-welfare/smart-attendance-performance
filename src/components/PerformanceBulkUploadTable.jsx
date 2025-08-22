@@ -314,41 +314,29 @@ function PerformanceBulkUploadTable({
       ),
     },
     {
-      field: '단위사업명',
-      headerName: '단위사업명',
-      width: 150,
-      renderCell: (params) => (
-        <Tooltip title={params.value || '미입력'}>
-          <Typography variant="body2" color={params.value ? 'inherit' : 'text.disabled'}>
-            {params.value || '-'}
-          </Typography>
-        </Tooltip>
-      ),
-    },
-    {
-      field: '기능',
-      headerName: '기능',
-      width: 120,
-      renderCell: (params) => (
-        <Chip
-          label={params.value || '미지정'}
-          size="small"
-          color={params.value ? 'primary' : 'default'}
-          variant="outlined"
-          sx={{ borderRadius: 2 }}
-        />
-      ),
-    },
-    {
-      field: '팀명',
-      headerName: '팀명',
-      width: 120,
-      renderCell: (params) => (
-        <Typography variant="body2">
-          {params.value || '-'}
-        </Typography>
-      ),
-    },
+  field: '단위사업명',
+  headerName: '단위사업명',
+  width: 150,
+  renderCell: (params) => (
+    <>{params.value ? params.value : '미지정'}</>
+  ),
+},
+{
+  field: '기능',
+  headerName: '기능',
+  width: 120,
+  renderCell: (params) => (
+    <>{params.value ? params.value : '미지정'}</>
+  ),
+},
+{
+  field: '팀명',
+  headerName: '팀명',
+  width: 120,
+  renderCell: (params) => (
+    <>{params.value ? params.value : '미지정'}</>
+  ),
+},
     {
       field: '등록인원',
       headerName: '등록인원',

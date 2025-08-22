@@ -83,30 +83,83 @@ async function checkUserPermission() {
 /**
  * ✅ 기존 getStructureBySubProgram 함수 완전 유지
  */
+let __TSPM_CACHE = null;
+
+function normalizeSubName(s = "") {
+  return String(s)
+    .replace(/\u00A0|\u200B|\u200C|\u200D|\uFEFF/g, "")
+    .replace(/[()［］\[\]{}<>\-·,.'"]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+// [교체] getStructureBySubProgram: 네트워크 재시도 + 일관 키(영문) 반환 + 캐시
 export async function getStructureBySubProgram(subProgramName) {
   if (!subProgramName || typeof subProgramName !== "string") return null;
 
-  try {
-    const result = await retryOperation(async () => {
-      const q = query(
-        collection(db, "TeamSubProgramMap"),
-        where("세부사업명", "==", subProgramName)
-      );
-      return await getDocs(q);
+  const raw = subProgramName.trim();
+  const norm = normalizeSubName(raw);
+
+  // 1) 완전 일치 먼저 확인 (재시도 포함)
+  const snap1 = await retryOperation(async () => {
+    const q1 = query(
+      collection(db, "TeamSubProgramMap"),
+      where("세부사업명", "==", raw)
+    );
+    return await getDocs(q1);
+  });
+
+  if (!snap1.empty) {
+    const d = snap1.docs[0].data() || {};
+    // ✅ 반환키는 항상 영문 (attendancePerformanceAPI가 기대하는 형태)
+    return {
+      team: d["팀명"] || d.team || "",
+      function: d["기능"] || d.function || "",
+      unit: d["단위사업명"] || d.unit || "",
+    };
+  }
+
+  // 2) 캐시 없으면 전량 로드 (재시도 포함)
+  if (!__TSPM_CACHE) {
+    const allSnap = await retryOperation(async () => {
+      return await getDocs(collection(db, "TeamSubProgramMap"));
     });
 
-    if (result.empty) return null;
-
-    const data = result.docs[0].data();
-    return {
-      team: data["팀명"] || "",
-      function: data["기능"] || "",
-      unit: data["단위사업명"] || ""
-    };
-  } catch (err) {
-    console.error("🔥 getStructureBySubProgram 오류:", err);
-    return null;
+    __TSPM_CACHE = allSnap.docs.map(docSnap => {
+      const d = docSnap.data() || {};
+      const name = d["세부사업명"] || d.subProgramName || "";
+      return {
+        __norm: normalizeSubName(name),
+        team: d["팀명"] || d.team || "",
+        function: d["기능"] || d.function || "",
+        unit: d["단위사업명"] || d.unit || "",
+        name,
+      };
+    });
   }
+
+  // 3) 정규화 일치
+  const hit = __TSPM_CACHE.find(x => x.__norm === norm);
+  if (hit) {
+    return { team: hit.team, function: hit.function, unit: hit.unit };
+  }
+
+  // 4) 부분 포함(느슨하지만 과하지 않게)
+  if (norm.length >= 3) {
+    const soft = __TSPM_CACHE.find(
+      x => x.__norm.includes(norm) || norm.includes(x.__norm)
+    );
+    if (soft) {
+      return { team: soft.team, function: soft.function, unit: soft.unit };
+    }
+  }
+
+  return null;
+}
+
+ export function resetTeamSubProgramMapCache() {
+  __TSPM_CACHE = null;
 }
 
 /**
